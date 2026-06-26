@@ -1,0 +1,144 @@
+name: CI/CD
+
+# - test:    corre la suite en cada push a master y en cada PR.
+# - build:   en cada tag (v*), construye el AppImage (Linux) y el .exe (Windows).
+# - release: en cada tag, crea la Release de GitHub enlazando ambos binarios.
+#
+# Lanzar una release:  git tag v1.0.0 && git push origin v1.0.0
+#
+# El binario NO empaqueta el modelo Whisper (~3 GB): se descarga en la 1ª
+# transcripción.
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # --------------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Dependencias del sistema
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libportaudio2
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Tests
+        run: pytest -q
+
+  # --------------------------------------------------------------------------
+  # AppImage portable. Se construye dentro de python:3.12-bullseye (glibc 2.31)
+  # para que el binario funcione también en equipos con glibc antigua.
+  build-appimage:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    container: python:3.12-bullseye
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias del sistema
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            libportaudio2 tk file desktop-file-utils curl xz-utils ca-certificates
+      - name: Instalar dependencias Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: ffmpeg estático
+        run: |
+          mkdir -p vendor
+          curl -fsSL -o /tmp/ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+          tar xf /tmp/ffmpeg.tar.xz -C /tmp
+          cp /tmp/ffmpeg-*-static/ffmpeg vendor/ffmpeg
+          chmod +x vendor/ffmpeg
+      - name: Binario portable (PyInstaller)
+        run: pyinstaller --noconfirm --clean --distpath dist-portable --workpath /tmp/wb recordit.spec
+      - name: Empaquetar AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: bash make-appimage.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: recordIt-x86_64.AppImage
+          if-no-files-found: error
+
+  # --------------------------------------------------------------------------
+  # .exe en un runner Windows. Instala el VC++ runtime (lo necesita ctranslate2)
+  # y ffmpeg.exe, y compila con PyInstaller.
+  build-exe:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: VC++ runtime (x64)
+        run: |
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "$env:TEMP\vc_redist.x64.exe"
+          Start-Process -Wait -FilePath "$env:TEMP\vc_redist.x64.exe" -ArgumentList "/install","/quiet","/norestart"
+      - name: Instalar dependencias Python
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Comprobar dependencias
+        run: python -c "import tkinter, customtkinter, PIL, sounddevice, ctranslate2; print('deps OK')"
+      - name: ffmpeg.exe estático
+        run: |
+          New-Item -ItemType Directory -Force vendor | Out-Null
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "$env:TEMP\ffmpeg.zip"
+          Expand-Archive -Force "$env:TEMP\ffmpeg.zip" "$env:TEMP\ffmpeg"
+          Copy-Item (Get-ChildItem "$env:TEMP\ffmpeg" -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName "vendor\ffmpeg.exe"
+      - name: Compilar (PyInstaller)
+        run: python -m PyInstaller --noconfirm --clean recordit.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exe
+          path: dist/recordIt.exe
+          if-no-files-found: error
+
+  # --------------------------------------------------------------------------
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-appimage, build-exe]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Crear Release de GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          recordIt ${{ github.ref_name }} — grabar, transcribir y generar actas de reunión.
+
+          **Descargas:**
+          - `recordIt-x86_64.AppImage` — Linux x86-64 (portable): `chmod +x` y ejecutar.
+          - `recordIt.exe` — Windows x86-64.
+
+          La 1ª transcripción descarga el modelo Whisper large-v3 (~3 GB).
+          EOF
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "recordIt ${{ github.ref_name }}" \
+            --notes-file notes.md \
+            "artifacts/appimage/recordIt-x86_64.AppImage" \
+            "artifacts/exe/recordIt.exe"
