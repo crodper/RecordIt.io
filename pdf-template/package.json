@@ -1,0 +1,17 @@
+{
+  "name": "recordit-pdf-template",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Plantilla PDF (Markdown -> PDF con portada, cabecera y pie)",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "markdown-it": "^14.1.0",
+    "markdown-it-anchor": "^9.2.0",
+    "pdf-lib": "^1.17.1",
+    "puppeteer": "^23.11.1"
+  }
+}

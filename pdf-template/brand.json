@@ -1,0 +1,26 @@
+{
+  "_comment": "Tokens de marca. Cambiar la marca = editar este archivo (no hace falta tocar código).",
+  "logo": "",
+  "footerText": "RecordIt · Documento interno",
+  "headerTitle": "",
+  "fonts": {
+    "body": "Lato, 'Noto Sans', 'Liberation Sans', sans-serif",
+    "mono": "'DejaVu Sans Mono', 'Liberation Mono', monospace"
+  },
+  "colors": {
+    "dark": "#243447",
+    "teal": "#3a7ca5",
+    "teal-light": "#bcd9e6",
+    "text": "#1f2a33",
+    "muted": "#5b6b76",
+    "rule": "#dbe3e8",
+    "row-alt": "#f4f8fa",
+    "code-bg": "#f5f7f9",
+    "note-bg": "#eef4f8",
+    "note-bd": "#3a7ca5",
+    "warn-bg": "#fdf6e3",
+    "warn-bd": "#c8941a",
+    "imp-bg": "#fdecec",
+    "imp-bd": "#cc3b3b"
+  }
+}
