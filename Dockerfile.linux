@@ -1,0 +1,20 @@
+# Construye recordIt sobre una glibc antigua (Debian bullseye, glibc 2.31) para que
+# el ejecutable sea portable a la mayoría de distros Linux actuales. Construir sobre
+# una glibc nueva (p. ej. 2.43) genera un binario que NO arranca en equipos con
+# glibc anterior ("GLIBC_x.y not found"); glibc solo es compatible hacia adelante.
+#
+# Uso (ver build-linux.sh):
+#   docker build -t recordit-build -f Dockerfile.linux .
+#   docker run --rm -v "$PWD":/app -w /app recordit-build \
+#       pyinstaller --noconfirm --clean --distpath dist-portable --workpath /tmp/wb recordit.spec
+FROM python:3.12-bullseye
+
+# libportaudio2: runtime de sounddevice;  tk: libtcl/libtk para tkinter (CustomTkinter).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libportaudio2 tk && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+# Falla pronto si tkinter no está disponible en esta imagen.
+RUN python -c "import tkinter; print('tkinter OK')"
