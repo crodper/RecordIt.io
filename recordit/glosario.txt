@@ -1,0 +1,30 @@
+# Glosario de recordIt — términos para sesgar la transcripción (hotwords).
+#
+# Un término por línea. Las líneas vacías y las que empiezan por # se ignoran.
+# Sirve para que Whisper reconozca nombres propios, productos y siglas en vez
+# de inventarse palabras parecidas. NO reduce las alucinaciones (eso lo hacen
+# vad_filter y condition_on_previous_text); solo mejora el reconocimiento de
+# vocabulario conocido.
+#
+# Ojo: el prompt de Whisper tiene un límite (~224 tokens) y meter demasiados
+# términos diluye el sesgo. Prioriza nombres propios que el transcriptor
+# confundiría (productos, protocolos, marcas), no palabras comunes. Puedes
+# ampliarlo sin tocar este fichero creando tu propio glosario de usuario
+# (ver recordit/glosario.py para la ruta según tu sistema).
+#
+# Lo de abajo es solo un ejemplo de términos técnicos genéricos. Sustitúyelo
+# por el vocabulario propio de tu organización (nombres de producto, siglas,
+# protocolos...).
+
+# --- Protocolos y buses (ejemplo) ---
+Modbus
+BACnet
+KNX
+Zigbee
+Z-Wave
+
+# --- Conceptos técnicos (ejemplo) ---
+HVAC
+firmware
+OTA
+gateway

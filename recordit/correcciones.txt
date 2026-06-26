@@ -1,0 +1,30 @@
+# Correcciones de recordIt — post-corrección determinista de la transcripción.
+#
+# Una sustitución por línea, con el formato:
+#     forma_incorrecta => forma_correcta
+# Las líneas vacías y las que empiezan por # se ignoran.
+#
+# Para qué sirve: es la red de seguridad del glosario. Los hotwords sesgan el
+# reconocimiento, pero cuando aun así Whisper escribe mal un nombre propio,
+# aquí lo arreglamos de forma 100% determinista. La búsqueda NO distingue
+# mayúsculas y respeta límites de palabra; el resultado siempre usa la forma
+# correcta escrita a la derecha.
+#
+# IMPORTANTE: solo actúa sobre coincidencias exactas, así que una entrada que
+# nunca ocurre es inofensiva. NO añadas como "incorrecto" una palabra española
+# legítima (p. ej. no pongas "sala => Sala" si "sala" puede aparecer con su
+# sentido normal), porque la machacarías siempre.
+#
+# La capitalización de los términos del glosario (modbus -> Modbus, etc.) ya se
+# normaliza automáticamente: no hace falta listarla aquí. Este fichero es solo
+# para errores fonéticos / de partición de palabras.
+#
+# Las entradas de abajo son solo EJEMPLOS genéricos; afínalas con audio real
+# (mira qué escribe mal Whisper y añade la corrección). Puedes ampliarlo sin
+# tocar este fichero con tu propio ~/.config/recordit/correcciones.txt.
+
+# --- Ejemplos de errores fonéticos / de partición (revisar con audio real) ---
+mod bus => Modbus
+back net => BACnet
+zig bee => Zigbee
+z wave => Z-Wave
