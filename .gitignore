@@ -1,0 +1,38 @@
+# Entorno Python
+.venv/
+__pycache__/
+*.pyc
+
+# Dependencias de Node (plantilla PDF) — se instalan con `npm install`
+node_modules/
+
+# Grabaciones y audio intermedio (pesados, datos de reunión)
+*.wav
+grabaciones/*
+!grabaciones/.gitkeep
+
+# Salidas generadas (una carpeta por reunión en transcripciones/)
+transcripciones/*
+!transcripciones/.gitkeep
+
+# Modelos de Whisper (se descargan solos en ~/.cache/huggingface)
+# (no viven en el repo; se listan aquí solo como recordatorio)
+
+# Varios
+.DS_Store
+recordit.log
+
+# Empaquetado PyInstaller
+build/
+dist/
+dist-portable/
+*.spec.bak
+vendor/ffmpeg
+# AppImage
+AppDir/
+*.AppImage
+vendor/appimagetool-*.AppImage
+
+# Artefactos sueltos de Claude (no versionar)
+artefacto-claude.html
+*.claude.html

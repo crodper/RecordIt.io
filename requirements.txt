@@ -1,0 +1,10 @@
+sounddevice>=0.5
+numpy>=2.0
+faster-whisper>=1.2
+anthropic>=0.40
+customtkinter>=5.2
+pillow>=10.0
+reportlab>=4.0
+cython>=3.0          # PyAV importa 'cython' en tiempo de ejecución dentro del bundle
+pytest>=8.0
+pyinstaller>=6.0
