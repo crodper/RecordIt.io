@@ -10,6 +10,13 @@ import sys
 from pathlib import Path
 
 
+# Formatos de audio que recordIt acepta como entrada. La grabación propia
+# genera siempre .wav, pero se admite importar audio externo (sobre todo .m4a
+# de móviles y grabadoras de voz). Todos los lee ffmpeg en el preprocesado, así
+# que basta con dejarlos pasar aquí.
+EXTENSIONES_AUDIO = (".wav", ".m4a", ".mp3", ".ogg", ".flac", ".aac", ".opus")
+
+
 def _es_empaquetado() -> bool:
     return getattr(sys, "frozen", False)
 
@@ -29,6 +36,18 @@ def dir_grabaciones() -> Path:
     d = base_datos() / "grabaciones"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def listar_grabaciones() -> list:
+    """Ficheros de audio de grabaciones/, recientes primero.
+
+    Acepta cualquier formato de `EXTENSIONES_AUDIO` (no solo .wav), de modo que
+    se puede dejar un .m4a en la carpeta e importarlo igual que una grabación.
+    """
+    carpeta = dir_grabaciones()
+    audios = [p for p in carpeta.iterdir()
+              if p.is_file() and p.suffix.lower() in EXTENSIONES_AUDIO]
+    return sorted(audios, key=lambda p: p.stat().st_mtime, reverse=True)
 
 
 def dir_reunion(base: str) -> Path:

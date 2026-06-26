@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Transcribe un .wav con faster-whisper (CLI sobre recordit.transcripcion).
+"""Transcribe un audio con faster-whisper (CLI sobre recordit.transcripcion).
+
+Acepta cualquier formato que lea ffmpeg (wav, m4a, mp3…); lo ideal es pasarle
+el .wav ya preprocesado a 16 kHz mono, pero también admite el audio original.
 
 Uso:
-    python transcribir.py <audio.wav> <salida.txt>
+    python transcribir.py <audio> <salida.txt>
 El fichero con timestamps se escribe junto al de texto plano.
 """
 import datetime as dt

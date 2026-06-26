@@ -1,3 +1,3 @@
 """Lógica núcleo de recordIt, reutilizada por la CLI y la GUI."""
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"

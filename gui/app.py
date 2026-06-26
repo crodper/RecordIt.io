@@ -398,8 +398,7 @@ class App:
         for w in self.lista.winfo_children():
             w.destroy()
         self.botones_grab = {}
-        grabaciones = sorted(rutas.dir_grabaciones().glob("*.wav"),
-                             key=lambda p: p.stat().st_mtime, reverse=True)
+        grabaciones = rutas.listar_grabaciones()
         for n, wav in enumerate(grabaciones):
             mb = wav.stat().st_size / (1024 * 1024)
             nombre = wav.name

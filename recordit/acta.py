@@ -42,7 +42,7 @@ def construir_prompt(transcripcion: str, *, fecha: str, base: str, titulo=None) 
 
 Datos de esta reunión:
 - Fecha: {fecha}
-- Fichero de audio: grabaciones/{base}.wav
+- Fichero de audio: grabaciones/{base}
 - Transcripción: transcripciones/{base}/transcripcion.txt (Whisper large-v3)
 
 A continuación, tras la línea '=== TRANSCRIPCIÓN ===', tienes la transcripción completa.

@@ -8,9 +8,9 @@
 #   3. Redacción del acta con el CLI de Claude (claude -p), en Markdown con front-matter.
 #   4. Render a PDF con la plantilla (pdf-template/render.mjs).
 #
-# Uso:
+# Uso (acepta wav, m4a, mp3… cualquier formato que lea ffmpeg):
 #   ./acta.sh grabaciones/reunion_2026-06-16_10-06-12.wav
-#   ./acta.sh grabaciones/reunion.wav "Título personalizado del acta"
+#   ./acta.sh grabaciones/reunion.m4a "Título personalizado del acta"
 #
 # Salidas (en ./transcripciones/<base>/, una carpeta por grabación):
 #   transcripcion.txt             transcripción en texto plano
@@ -31,7 +31,7 @@ PLANTILLA_DIR="${PDF_TEMPLATE_DIR:-$PROYECTO/pdf-template}"
 
 # --- Argumentos ---------------------------------------------------------------
 if [ $# -lt 1 ]; then
-  echo "Uso: $0 <audio.wav> [\"Título del acta\"]" >&2
+  echo "Uso: $0 <audio> [\"Título del acta\"]   (wav, m4a, mp3… cualquier formato que lea ffmpeg)" >&2
   exit 1
 fi
 
@@ -82,7 +82,7 @@ PROMPT="Eres un asistente que redacta actas de reunión en español a partir de 
 
 Datos de esta reunión:
 - Fecha: $FECHA_LEGIBLE
-- Fichero de audio: grabaciones/${BASE}.wav
+- Fichero de audio: grabaciones/${BASE}
 - Transcripción: transcripciones/${BASE}/transcripcion.txt (Whisper large-v3)
 
 A continuación, tras la línea '=== TRANSCRIPCIÓN ===', tienes la transcripción completa.
