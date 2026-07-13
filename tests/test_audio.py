@@ -1,3 +1,6 @@
+import threading
+import wave
+
 import numpy as np
 
 from recordit import audio
@@ -119,3 +122,35 @@ def test_microfonos_alsa_puro_no_se_filtra_de_mas():
     assert "sof-soundwire: - (hw:0,1)" in nombres
     assert "default" in nombres
     assert len(micros) == 2
+
+
+# --- grabación con callback ---------------------------------------------------
+
+
+class _StreamFake:
+    """InputStream falso: entrega 3 bloques al entrar y no toca PortAudio."""
+
+    def __init__(self, **kwargs):
+        self.callback = kwargs["callback"]
+
+    def __enter__(self):
+        datos = np.full((1024, 1), 1000, dtype=np.int16)
+        for _ in range(3):
+            self.callback(datos, 1024, None, None)
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_grabar_entrega_los_bytes_escritos_a_muestras_callback(tmp_path, monkeypatch):
+    monkeypatch.setattr(audio.sd, "InputStream", _StreamFake)
+    monkeypatch.setattr(audio, "frecuencia_soportada", lambda d, f, c: f)
+    recibidos = []
+    audio.grabar(tmp_path / "x.wav", evento_parada=threading.Event(),
+                 duracion_max=0.0, ganancia=1.0,
+                 muestras_callback=recibidos.append)
+    assert recibidos, "el callback no recibió ningún bloque"
+    with wave.open(str(tmp_path / "x.wav")) as w:
+        escrito = w.readframes(w.getnframes())
+    assert b"".join(recibidos) == escrito

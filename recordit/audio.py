@@ -152,11 +152,12 @@ def frecuencia_soportada(dispositivo, frecuencia, canales) -> int:
 
 def grabar(salida, *, evento_parada, nivel_callback=None,
            frecuencia=44100, canales=1, dispositivo=None,
-           duracion_max=None, ganancia=None) -> float:
+           duracion_max=None, ganancia=None, muestras_callback=None) -> float:
     """Graba del micrófono a un .wav hasta que se active `evento_parada`.
 
     ganancia: None -> AGC automático; float -> ganancia fija (1.0 = sin cambio).
     nivel_callback(pico_db, ganancia_db): se llama por bloque (para el VU meter).
+    muestras_callback(bytes): recibe cada bloque int16 recién escrito (transcripción en vivo).
     Devuelve los segundos de audio escritos.
     """
     frecuencia = frecuencia_soportada(dispositivo, frecuencia, canales)
@@ -199,6 +200,8 @@ def grabar(salida, *, evento_parada, nivel_callback=None,
                 except queue.Empty:
                     continue
                 wav.writeframes(bytes_audio)
+                if muestras_callback is not None:
+                    muestras_callback(bytes_audio)
                 segundos_escritos += len(bytes_audio) / (2 * canales) / frecuencia
                 if nivel_callback is not None:
                     nivel_callback(pico_db, ganancia_db)
