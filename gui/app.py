@@ -12,13 +12,14 @@ import collections
 import multiprocessing
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import threading
 import time
 import webbrowser
 from pathlib import Path
-from tkinter import Canvas, Menu, StringVar, messagebox
+from tkinter import Canvas, Menu, StringVar, filedialog, messagebox
 
 import customtkinter as ctk
 
@@ -591,6 +592,38 @@ class App:
                 self._encolar_error(exc)
 
         threading.Thread(target=trabajo, daemon=True).start()
+
+    def _on_importar(self):
+        """Importa un audio externo: lo copia a grabaciones/ y lo transcribe.
+
+        La transcripción en segundo plano solo arranca si el modelo large-v3
+        ya está en caché (no se dispara una descarga de ~3 GB sin avisar); si
+        no lo está, el archivo queda 'sin transcribir' y el usuario pulsa
+        Transcribir cuando quiera.
+        """
+        if self.trabajando:
+            return
+        patron = " ".join(f"*{e}" for e in rutas.EXTENSIONES_AUDIO)
+        origen = filedialog.askopenfilename(
+            title="Importar audio",
+            filetypes=[("Audio", patron), ("Todos los archivos", "*.*")])
+        if not origen:
+            return
+        destino_dir = rutas.dir_grabaciones()
+        nombre = rutas.nombre_import_libre(origen, destino_dir)
+        destino = destino_dir / nombre
+        try:
+            shutil.copy2(origen, destino)
+        except Exception as exc:  # noqa: BLE001
+            self._encolar_error(exc)
+            return
+        self._refrescar_grabaciones()
+        self._seleccionar(nombre)
+        if transcripcion.modelo_en_cache("large-v3"):
+            self._lanzar_transcripcion(rutas.base_desde_audio(destino), destino)
+        else:
+            self.lbl_estado.configure(
+                text=f"Importado {nombre}. Pulsa «Transcribir» para procesarlo.")
 
     # --- acta -----------------------------------------------------------
     def _on_generar_acta(self):
