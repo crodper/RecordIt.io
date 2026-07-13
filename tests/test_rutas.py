@@ -94,3 +94,8 @@ def test_nombre_import_libre_varias_colisiones(tmp_path):
     (tmp_path / "charla.m4a").write_bytes(b"")
     (tmp_path / "charla (2).m4a").write_bytes(b"")
     assert rutas.nombre_import_libre("charla.m4a", tmp_path) == "charla (3).m4a"
+
+
+def test_nombre_import_libre_colision_por_stem_otra_extension(tmp_path):
+    (tmp_path / "reunion.wav").write_bytes(b"")  # misma reunión, otra extensión
+    assert rutas.nombre_import_libre("reunion.m4a", tmp_path) == "reunion (2).m4a"

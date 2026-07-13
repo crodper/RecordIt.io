@@ -319,7 +319,6 @@ class App:
         acc = ctk.CTkFrame(t, fg_color="transparent")
         acc.grid(row=3, column=0, sticky="we", padx=18, pady=16)
         acc.grid_columnconfigure(0, weight=1)
-        blanco = (255, 255, 255)
         teal_rgb = (10, 134, 168)
         ico_importar = self._icono_tintado("transcribir", teal_rgb, 22)
         ico_carpeta = self._icono_tintado("carpeta", teal_rgb, 22)
@@ -608,6 +607,12 @@ class App:
             title="Importar audio",
             filetypes=[("Audio", patron), ("Todos los archivos", "*.*")])
         if not origen:
+            return
+        if Path(origen).suffix.lower() not in rutas.EXTENSIONES_AUDIO:
+            messagebox.showerror(
+                "recordIt",
+                "Ese archivo no es un audio admitido. Formatos: "
+                + ", ".join(rutas.EXTENSIONES_AUDIO))
             return
         destino_dir = rutas.dir_grabaciones()
         nombre = rutas.nombre_import_libre(origen, destino_dir)
@@ -922,10 +927,6 @@ class App:
                 elif tipo == "progreso":
                     actual, total = evento[1], evento[2]
                     self.barra_progreso.set((actual / total) if total else 0)
-                elif tipo == "fin_trabajo":
-                    self.trabajando = False
-                    self.barra_progreso.set(0)
-                    self.lbl_estado.configure(text=evento[1])
                 elif tipo == "fin_transcripcion":
                     base, ok = evento[1], evento[2]
                     self.trabajando = False

@@ -99,17 +99,24 @@ def estado_reunion(base: str, generando: bool = False) -> str:
 
 
 def nombre_import_libre(nombre, destino_dir) -> str:
-    """Nombre de fichero libre (sin colisión) dentro de `destino_dir`.
+    """Nombre de fichero libre dentro de `destino_dir`, por IDENTIDAD de reunión.
 
-    Toma el nombre base de `nombre` y, si ya existe, le añade ' (2)', ' (3)'…
-    antes de la extensión.
+    La reunión se identifica por el nombre base sin extensión (el stem), porque
+    su transcripción vive en transcripciones/<stem>/. Por eso un stem se
+    considera ocupado si YA existe cualquier audio con ese mismo stem (aunque
+    tenga otra extensión); así una importación nunca comparte carpeta con otra
+    grabación. Si está ocupado, añade ' (2)', ' (3)'… antes de la extensión.
     """
     destino_dir = Path(destino_dir)
     cand = Path(nombre).name
-    if not (destino_dir / cand).exists():
-        return cand
     tallo, sufijo = Path(cand).stem, Path(cand).suffix
+
+    def libre(t):
+        return not any((destino_dir / f"{t}{e}").exists() for e in EXTENSIONES_AUDIO)
+
+    if libre(tallo):
+        return cand
     n = 2
-    while (destino_dir / f"{tallo} ({n}){sufijo}").exists():
+    while not libre(f"{tallo} ({n})"):
         n += 1
     return f"{tallo} ({n}){sufijo}"
