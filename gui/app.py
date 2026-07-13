@@ -23,7 +23,7 @@ from tkinter import Canvas, StringVar, messagebox
 import customtkinter as ctk
 
 from recordit import (acta, audio, claude_auth, config, integracion, pdf, preproceso,
-                      registro, rutas, transcripcion)
+                      registro, rutas, transcripcion, transcripcion_vivo)
 from recordit import __version__ as VERSION
 
 # --- Paleta ----------------------------------------------------------------
@@ -449,14 +449,25 @@ class App:
 
         ganancia = {"Auto": None, "Off": 1.0}.get(self.var_ganancia.get(), 3.0)
         dispositivo = self._dispositivo_actual()
+        base = rutas.base_desde_audio(salida)
+        frecuencia = audio.frecuencia_soportada(dispositivo, 44100, 1)
+        vivo = transcripcion_vivo.crear(base, frecuencia)
+        if vivo:
+            self.lbl_estado.configure(
+                text=f"Grabando en {salida.name}… (transcribiendo en 2º plano)")
 
         def trabajo():
             def nivel(pico_db, ganancia_db):
                 self.cola.put(("nivel", pico_db))
             try:
                 audio.grabar(salida, evento_parada=self.evento_parada, nivel_callback=nivel,
-                             dispositivo=dispositivo, ganancia=ganancia)
-                self.cola.put(("fin_grabacion", str(salida)))
+                             dispositivo=dispositivo, ganancia=ganancia,
+                             muestras_callback=vivo.alimentar if vivo else None)
+                if vivo:
+                    self.cola.put(("estado", "Grabación guardada. Terminando transcripción…"))
+                    self.cola.put(("fin_grabacion_vivo", str(salida), vivo.finalizar()))
+                else:
+                    self.cola.put(("fin_grabacion", str(salida)))
             except Exception as exc:  # noqa: BLE001
                 self.cola.put(("error_grabacion", str(exc)))
 
@@ -763,6 +774,16 @@ class App:
                     self.lbl_rec.configure(text="Grabar")
                     self.lbl_tiempo.configure(text_color=TEXTO)
                     self.lbl_estado.configure(text="Grabación guardada.")
+                    self._refrescar_grabaciones()
+                elif tipo == "fin_grabacion_vivo":
+                    self.grabando = False
+                    self.btn_rec.configure(text="●")
+                    self.lbl_rec.configure(text="Grabar")
+                    self.lbl_tiempo.configure(text_color=TEXTO)
+                    self.lbl_estado.configure(
+                        text="Grabación guardada y transcripción lista."
+                        if evento[2] else
+                        "Grabación guardada (la transcripción en vivo falló; usa «Transcribir»).")
                     self._refrescar_grabaciones()
                 elif tipo == "error_grabacion":
                     self.grabando = False
