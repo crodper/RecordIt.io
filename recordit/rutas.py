@@ -77,3 +77,22 @@ def ruta_acta_md(base: str, fecha_iso: str = None) -> Path:
 
 def ruta_clean(base: str) -> Path:
     return dir_reunion(base) / "clean_16k.wav"
+
+
+def estado_reunion(base: str, generando: bool = False) -> str:
+    """Estado de una reunión para la lista de la GUI, SIN crear carpetas.
+
+    Devuelve, por orden de prioridad: 'generando' (transcripción en curso),
+    'con_acta' (hay un acta*.md), 'transcrita' (hay transcripcion.txt) o
+    'sin_transcribir'. No usa dir_reunion/ruta_transcripcion porque esos
+    hacen mkdir; aquí solo se consulta.
+    """
+    if generando:
+        return "generando"
+    d = base_datos() / "transcripciones" / base
+    if d.is_dir():
+        if any(d.glob("acta*.md")):
+            return "con_acta"
+        if (d / "transcripcion.txt").exists():
+            return "transcrita"
+    return "sin_transcribir"

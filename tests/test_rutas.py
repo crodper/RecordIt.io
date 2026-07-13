@@ -53,3 +53,29 @@ def test_listar_grabaciones_ordena_por_fecha(monkeypatch, tmp_path):
     os.utime(reciente, (2000, 2000))
 
     assert [p.name for p in rutas.listar_grabaciones()] == ["reciente.m4a", "antiguo.wav"]
+
+
+def test_estado_reunion_sin_transcribir(monkeypatch, tmp_path):
+    monkeypatch.setenv("RECORDIT_DATA_DIR", str(tmp_path))
+    assert rutas.estado_reunion("reunion_x") == "sin_transcribir"
+    # no debe crear la carpeta solo por consultar el estado
+    assert not (tmp_path / "transcripciones" / "reunion_x").exists()
+
+
+def test_estado_reunion_generando_gana(monkeypatch, tmp_path):
+    monkeypatch.setenv("RECORDIT_DATA_DIR", str(tmp_path))
+    rutas.ruta_acta_md("reunion_x").write_text("x", encoding="utf-8")  # crea la carpeta
+    assert rutas.estado_reunion("reunion_x", generando=True) == "generando"
+
+
+def test_estado_reunion_transcrita(monkeypatch, tmp_path):
+    monkeypatch.setenv("RECORDIT_DATA_DIR", str(tmp_path))
+    rutas.ruta_transcripcion("reunion_x").write_text("hola", encoding="utf-8")
+    assert rutas.estado_reunion("reunion_x") == "transcrita"
+
+
+def test_estado_reunion_con_acta_gana_a_transcrita(monkeypatch, tmp_path):
+    monkeypatch.setenv("RECORDIT_DATA_DIR", str(tmp_path))
+    rutas.ruta_transcripcion("reunion_x").write_text("hola", encoding="utf-8")
+    rutas.ruta_acta_md("reunion_x", "2026-07-13").write_text("# acta", encoding="utf-8")
+    assert rutas.estado_reunion("reunion_x") == "con_acta"
