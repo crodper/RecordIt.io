@@ -79,3 +79,18 @@ def test_estado_reunion_con_acta_gana_a_transcrita(monkeypatch, tmp_path):
     rutas.ruta_transcripcion("reunion_x").write_text("hola", encoding="utf-8")
     rutas.ruta_acta_md("reunion_x", "2026-07-13").write_text("# acta", encoding="utf-8")
     assert rutas.estado_reunion("reunion_x") == "con_acta"
+
+
+def test_nombre_import_libre_sin_colision(tmp_path):
+    assert rutas.nombre_import_libre("/algun/sitio/charla.m4a", tmp_path) == "charla.m4a"
+
+
+def test_nombre_import_libre_una_colision(tmp_path):
+    (tmp_path / "charla.m4a").write_bytes(b"")
+    assert rutas.nombre_import_libre("charla.m4a", tmp_path) == "charla (2).m4a"
+
+
+def test_nombre_import_libre_varias_colisiones(tmp_path):
+    (tmp_path / "charla.m4a").write_bytes(b"")
+    (tmp_path / "charla (2).m4a").write_bytes(b"")
+    assert rutas.nombre_import_libre("charla.m4a", tmp_path) == "charla (3).m4a"

@@ -96,3 +96,20 @@ def estado_reunion(base: str, generando: bool = False) -> str:
         if (d / "transcripcion.txt").exists():
             return "transcrita"
     return "sin_transcribir"
+
+
+def nombre_import_libre(nombre, destino_dir) -> str:
+    """Nombre de fichero libre (sin colisión) dentro de `destino_dir`.
+
+    Toma el nombre base de `nombre` y, si ya existe, le añade ' (2)', ' (3)'…
+    antes de la extensión.
+    """
+    destino_dir = Path(destino_dir)
+    cand = Path(nombre).name
+    if not (destino_dir / cand).exists():
+        return cand
+    tallo, sufijo = Path(cand).stem, Path(cand).suffix
+    n = 2
+    while (destino_dir / f"{tallo} ({n}){sufijo}").exists():
+        n += 1
+    return f"{tallo} ({n}){sufijo}"
