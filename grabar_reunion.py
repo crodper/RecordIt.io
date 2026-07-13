@@ -9,6 +9,7 @@ Uso:
     python grabar_reunion.py --listar         # lista micrófonos
     python grabar_reunion.py -o salida.wav    # nombre de salida concreto
     python grabar_reunion.py --ganancia 3     # ganancia fija (o 'off')
+    python grabar_reunion.py --transcribir    # graba y transcribe simultáneamente
 """
 import argparse
 import sys
@@ -16,7 +17,7 @@ import threading
 
 import sounddevice as sd
 
-from recordit import audio, rutas
+from recordit import audio, rutas, transcripcion_vivo
 
 
 def listar_dispositivos() -> None:
@@ -53,6 +54,9 @@ def main() -> None:
     parser.add_argument("-g", "--ganancia", default="auto",
                         help="'auto' (AGC), un número (fija) u 'off'")
     parser.add_argument("--listar", action="store_true")
+    parser.add_argument("--transcribir", action="store_true",
+                        help="transcribe en segundo plano mientras graba "
+                             "(la transcripción queda lista al parar)")
     args = parser.parse_args()
 
     if args.listar:
@@ -61,6 +65,19 @@ def main() -> None:
 
     salida = args.salida or str(rutas.dir_grabaciones() / audio.nombre_archivo())
     evento = threading.Event()
+
+    vivo = None
+    if args.transcribir:
+        if args.canales != 1:
+            print("Aviso: la transcripción en vivo requiere audio mono; se graba sin ella.")
+        else:
+            frecuencia = audio.frecuencia_soportada(
+                args.dispositivo, args.frecuencia, args.canales)
+            base = rutas.base_desde_audio(salida)
+            vivo = transcripcion_vivo.crear(base, frecuencia)
+            if vivo is None:
+                print("Aviso: el modelo large-v3 no está descargado; "
+                      "se graba sin transcripción en vivo.")
 
     def nivel(pico_db, ganancia_db):
         aviso = " SATURA!" if pico_db > -3.0 else (" (muy bajo)" if pico_db < -45.0 else "")
@@ -74,11 +91,18 @@ def main() -> None:
             frecuencia=args.frecuencia, canales=args.canales,
             dispositivo=args.dispositivo, duracion_max=args.duracion,
             ganancia=parse_ganancia(args.ganancia),
+            muestras_callback=vivo.alimentar if vivo else None,
         )
     except KeyboardInterrupt:
         evento.set()
         segundos = 0.0
     print(f"\n\nGuardado: {salida}")
+    if vivo is not None:
+        print("Terminando la transcripción de los últimos minutos…")
+        if vivo.finalizar():
+            print(f"Transcripción lista: {rutas.ruta_transcripcion(base)}")
+        else:
+            print("La transcripción en vivo falló; ejecuta transcribir.py sobre el .wav.")
 
 
 if __name__ == "__main__":
