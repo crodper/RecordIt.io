@@ -93,6 +93,43 @@ def test_vivo_error_en_el_worker_no_revienta_y_finalizar_es_false(monkeypatch, t
     vivo.alimentar(_senal(1).tobytes())  # tras el error, alimentar no lanza
 
 
+def test_vivo_error_tras_escribir_un_tramo_borra_los_ficheros_parciales(monkeypatch, tmp_path):
+    """Si el worker falla DESPUÉS de haber escrito al menos un tramo, no debe
+    quedar transcripcion.txt/_timestamps.txt a medias: la GUI se salta la
+    retranscripción cuando transcripcion.txt ya existe, así que un transcrito
+    truncado produciría en silencio un acta truncada."""
+    llamadas = {"n": 0}
+
+    def preprocesar_falla_la_segunda_vez(entrada, salida):
+        llamadas["n"] += 1
+        if llamadas["n"] == 1:
+            shutil.copy(entrada, salida)
+        else:
+            raise RuntimeError("ffmpeg caput")
+
+    vivo = _vivo("reunion_parcial", monkeypatch, tmp_path)
+    vivo._preprocesar = preprocesar_falla_la_segunda_vez
+    # min=2/max=4: 3s produce un primer corte (tramo escrito con éxito);
+    # 3s más fuerza un segundo tramo, que falla al preprocesar.
+    vivo.alimentar(_senal(3).tobytes())
+    vivo.alimentar(_senal(3).tobytes())
+    assert vivo.finalizar() is False
+    assert llamadas["n"] >= 2
+    assert not rutas.ruta_transcripcion("reunion_parcial").exists()
+    assert not rutas.ruta_timestamps("reunion_parcial").exists()
+
+
+def test_vivo_alimentar_no_revienta_si_la_cola_falla(monkeypatch, tmp_path):
+    vivo = _vivo("reunion_cola_rota", monkeypatch, tmp_path)
+
+    def put_roto(*a, **kw):
+        raise RuntimeError("cola caput")
+
+    monkeypatch.setattr(vivo._cola, "put", put_roto)
+    vivo.alimentar(_senal(1).tobytes())  # no debe lanzar
+    assert vivo.finalizar() is False
+
+
 def test_crear_devuelve_none_sin_modelo_en_cache(monkeypatch, tmp_path):
     monkeypatch.setenv("HF_HOME", str(tmp_path))
     assert transcripcion_vivo.crear("reunion_x", 44100) is None

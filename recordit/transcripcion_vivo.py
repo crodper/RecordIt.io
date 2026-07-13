@@ -7,7 +7,6 @@ mismos parámetros que la transcripción clásica. Si algo falla, se apaga solo
 y JAMÁS afecta a la grabación: el .wav completo sigue en disco para la
 transcripción clásica.
 """
-import os
 import queue
 import tempfile
 import threading
@@ -77,8 +76,12 @@ class TranscriptorEnVivo:
 
     # --- interfaz para el grabador (no bloquea nunca) --------------------
     def alimentar(self, bytes_bloque):
-        if not self._error:
-            self._cola.put(bytes_bloque)
+        try:
+            if not self._error:
+                self._cola.put(bytes_bloque)
+        except Exception:  # noqa: BLE001 — jamás debe interrumpir la grabación
+            registro.registrar_excepcion("transcripción en vivo (alimentar)")
+            self._error = True
 
     def finalizar(self) -> bool:
         """Procesa lo pendiente (incluido el tramo final) y espera al hilo."""
@@ -110,6 +113,12 @@ class TranscriptorEnVivo:
             for f in (self._f_txt, self._f_ts):
                 if f is not None:
                     f.close()
+            if self._error:
+                # La GUI se salta la retranscripción si transcripcion.txt ya
+                # existe: un transcrito a medias produciría en silencio un
+                # acta truncada. Mejor no dejar rastro de una corrida fallida.
+                rutas.ruta_transcripcion(self.base).unlink(missing_ok=True)
+                rutas.ruta_timestamps(self.base).unlink(missing_ok=True)
 
     def _drenar_cola(self):
         try:

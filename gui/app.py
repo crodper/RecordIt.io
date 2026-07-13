@@ -469,6 +469,11 @@ class App:
                 else:
                     self.cola.put(("fin_grabacion", str(salida)))
             except Exception as exc:  # noqa: BLE001
+                if vivo is not None:
+                    try:
+                        vivo.finalizar()
+                    except Exception:  # noqa: BLE001 — importa el error de grabación, no este
+                        pass
                 self.cola.put(("error_grabacion", str(exc)))
 
         threading.Thread(target=trabajo, daemon=True).start()
