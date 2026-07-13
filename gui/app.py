@@ -42,6 +42,15 @@ ONDA_ACTIVA = "#ff9f45"
 CORAL = "#ef5f4c"
 CORAL_HOVER = "#d94f3d"
 VERDE = "#3ba55d"
+AMBAR = "#e0a83e"  # transcripción en curso (dot ◐)
+
+# glifo y color del punto de estado por cada estado de rutas.estado_reunion
+_PUNTO_ESTADO = {
+    "sin_transcribir": ("○", MUTED),
+    "generando": ("◐", AMBAR),
+    "transcrita": ("●", TEAL),
+    "con_acta": ("●", TEAL),
+}
 
 AUTOR = "RecordIt"
 SOPORTE = "¿Has encontrado un error? Abre una incidencia en el repositorio del proyecto."
@@ -132,6 +141,7 @@ class App:
         self.trabajando = False
         self.nombre_sel = None
         self.botones_grab = {}
+        self.transcribiendo = set()  # bases con transcripción en curso (dot ◐)
         self._mic_idx = {}
         self.niveles = collections.deque(maxlen=400)
 
@@ -404,14 +414,18 @@ class App:
             nombre = wav.name
             fila = ctk.CTkFrame(self.lista, fg_color="transparent", corner_radius=10)
             fila.grid(row=n, column=0, sticky="we", pady=2)
-            fila.grid_columnconfigure(0, weight=1)
+            fila.grid_columnconfigure(1, weight=1)
+            base = rutas.base_desde_audio(wav)
+            glifo, color = _PUNTO_ESTADO[rutas.estado_reunion(base, base in self.transcribiendo)]
+            lbl_p = ctk.CTkLabel(fila, text=glifo, width=16, font=self.f_base, text_color=color)
+            lbl_p.grid(row=0, column=0, padx=(10, 2), pady=8)
             lbl_n = ctk.CTkLabel(fila, text=nombre, anchor="w", font=self.f_base,
                                  text_color=TEXTO)
-            lbl_n.grid(row=0, column=0, sticky="we", padx=(10, 6), pady=8)
+            lbl_n.grid(row=0, column=1, sticky="we", padx=(2, 6), pady=8)
             lbl_s = ctk.CTkLabel(fila, text=f"{mb:.1f} MB", anchor="e", font=self.f_sub,
                                  text_color=MUTED)
-            lbl_s.grid(row=0, column=1, sticky="e", padx=(0, 12))
-            for wdg in (fila, lbl_n, lbl_s):
+            lbl_s.grid(row=0, column=2, sticky="e", padx=(0, 12))
+            for wdg in (fila, lbl_p, lbl_n, lbl_s):
                 wdg.bind("<Button-1>", lambda e, nb=nombre: self._seleccionar(nb))
                 wdg.bind("<Enter>", lambda e, nb=nombre: self._hover(nb, True))
                 wdg.bind("<Leave>", lambda e, nb=nombre: self._hover(nb, False))
@@ -484,11 +498,20 @@ class App:
         if not nombre:
             messagebox.showinfo("recordIt", "Selecciona una grabación de la lista.")
             return
+        wav = rutas.dir_grabaciones() / nombre
+        self._lanzar_transcripcion(rutas.base_desde_audio(wav), wav)
+
+    def _lanzar_transcripcion(self, base, wav):
+        """Transcribe `wav` en segundo plano marcando el estado 'generando'.
+
+        Reutilizado por el botón Transcribir y por la importación. Añade la
+        reunión a self.transcribiendo (dot ◐) y la quita al terminar/fallar.
+        """
         if self.trabajando:
             return
         self.trabajando = True
-        wav = rutas.dir_grabaciones() / nombre
-        base = rutas.base_desde_audio(wav)
+        self.transcribiendo.add(base)
+        self._refrescar_grabaciones()
 
         def trabajo():
             try:
@@ -504,8 +527,9 @@ class App:
                 transcripcion.transcribir(
                     limpio, rutas.ruta_transcripcion(base), rutas.ruta_timestamps(base),
                     progreso_callback=lambda a, t: self.cola.put(("progreso", a, t)))
-                self.cola.put(("fin_trabajo", f"Transcripción lista: {base}"))
+                self.cola.put(("fin_transcripcion", base, True))
             except Exception as exc:  # noqa: BLE001
+                self.cola.put(("fin_transcripcion", base, False))
                 self._encolar_error(exc)
 
         threading.Thread(target=trabajo, daemon=True).start()
@@ -809,6 +833,14 @@ class App:
                     self.trabajando = False
                     self.barra_progreso.set(0)
                     self.lbl_estado.configure(text=evento[1])
+                elif tipo == "fin_transcripcion":
+                    base, ok = evento[1], evento[2]
+                    self.trabajando = False
+                    self.transcribiendo.discard(base)
+                    self.barra_progreso.set(0)
+                    self.lbl_estado.configure(
+                        text=f"Transcripción lista: {base}" if ok else "No se pudo transcribir.")
+                    self._refrescar_grabaciones()
                 elif tipo == "acta_lista":
                     self.trabajando = False
                     self.lbl_estado.configure(text=f"Acta generada: {evento[1]}")
