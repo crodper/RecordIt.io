@@ -18,7 +18,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
-from tkinter import Canvas, StringVar, messagebox
+from tkinter import Canvas, Menu, StringVar, messagebox
 
 import customtkinter as ctk
 
@@ -320,27 +320,37 @@ class App:
         acc.grid_columnconfigure(0, weight=1)
         blanco = (255, 255, 255)
         teal_rgb = (10, 134, 168)
-        ico_transcribir = self._icono_tintado("transcribir", blanco, 22)
-        ico_acta = self._icono_tintado("acta", blanco, 22)
+        ico_importar = self._icono_tintado("transcribir", teal_rgb, 22)
         ico_carpeta = self._icono_tintado("carpeta", teal_rgb, 22)
         comun = dict(height=44, corner_radius=10, anchor="w", compound="left",
                      font=self.f_base)
-        ctk.CTkButton(acc, text="   Transcribir", image=ico_transcribir,
-                      command=self._on_transcribir, fg_color=TEAL, hover_color=TEAL_HOVER,
-                      **comun).grid(row=0, column=0, sticky="we", pady=(0, 8))
-        self.btn_acta = ctk.CTkButton(acc, text="   Generar acta…", image=ico_acta,
-                                      command=self._on_generar_acta, fg_color=TEAL,
-                                      hover_color=TEAL_HOVER, **comun)
-        self.btn_acta.grid(row=1, column=0, sticky="we", pady=(0, 8))
-        ico_pdf = self._icono_tintado("acta", teal_rgb, 22)
-        ctk.CTkButton(acc, text="   Generar PDF", image=ico_pdf,
-                      command=self._on_generar_pdf, fg_color="transparent",
+
+        # Importar audio externo (siempre disponible).
+        ctk.CTkButton(acc, text="   ＋ Importar audio…", image=ico_importar,
+                      command=self._on_importar, fg_color="transparent",
                       border_width=1, border_color=TEAL, text_color=TEAL,
-                      hover_color=SEL, **comun).grid(row=2, column=0, sticky="we", pady=(0, 8))
+                      hover_color=SEL, **comun).grid(row=0, column=0, columnspan=2,
+                                                     sticky="we", pady=(0, 8))
+
+        # Acción principal adaptativa + menú de acciones secundarias (⋯).
+        fila_acc = ctk.CTkFrame(acc, fg_color="transparent")
+        fila_acc.grid(row=1, column=0, sticky="we", pady=(0, 8))
+        fila_acc.grid_columnconfigure(0, weight=1)
+        self.btn_primario = ctk.CTkButton(fila_acc, text="Selecciona una grabación",
+                                          command=self._accion_primaria, fg_color=TEAL,
+                                          hover_color=TEAL_HOVER, state="disabled", **comun)
+        self.btn_primario.grid(row=0, column=0, sticky="we")
+        self.btn_menu = ctk.CTkButton(fila_acc, text="⋯", width=44, height=44,
+                                      corner_radius=10, command=self._menu_secundario,
+                                      fg_color="transparent", border_width=1,
+                                      border_color=TEAL, text_color=TEAL, hover_color=SEL,
+                                      font=self.f_base, state="disabled")
+        self.btn_menu.grid(row=0, column=1, padx=(8, 0))
+
         ctk.CTkButton(acc, text="   Abrir carpeta", image=ico_carpeta,
                       command=self._on_abrir_carpeta, fg_color="transparent",
                       border_width=1, border_color=TEAL, text_color=TEAL,
-                      hover_color=SEL, **comun).grid(row=3, column=0, sticky="we")
+                      hover_color=SEL, **comun).grid(row=2, column=0, columnspan=2, sticky="we")
 
     # --- forma de onda --------------------------------------------------
     def _dibujar_onda(self):
@@ -371,14 +381,61 @@ class App:
     # --- estado ---------------------------------------------------------
     def _actualizar_estado_acta(self):
         conectado = claude_auth.conectado()
-        self.btn_acta.configure(state="normal" if conectado else "disabled")
         if conectado:
             self.lbl_conexion.configure(text="● Claude conectado", text_color=VERDE)
         else:
             self.lbl_conexion.configure(text="● Sin conexión", text_color=MUTED)
+        self._actualizar_accion_primaria()
 
     def _seleccion(self):
         return self.nombre_sel
+
+    def _estado_sel(self):
+        """Estado de la grabación seleccionada, o None si no hay selección."""
+        if not self.nombre_sel:
+            return None
+        base = rutas.base_desde_audio(rutas.dir_grabaciones() / self.nombre_sel)
+        return rutas.estado_reunion(base, base in self.transcribiendo)
+
+    # Etiqueta y color del botón principal según el estado seleccionado.
+    _ACCION_PRIMARIA = {
+        None: ("Selecciona una grabación", None),
+        "generando": ("Generando…", None),
+        "sin_transcribir": ("Transcribir", "_on_transcribir"),
+        "transcrita": ("Generar acta…", "_on_generar_acta"),
+        "con_acta": ("Generar PDF", "_on_generar_pdf"),
+    }
+
+    def _accion_primaria(self):
+        _, metodo = self._ACCION_PRIMARIA.get(self._estado_sel(), (None, None))
+        if metodo:
+            getattr(self, metodo)()
+
+    def _actualizar_accion_primaria(self):
+        estado = self._estado_sel()
+        etiqueta, metodo = self._ACCION_PRIMARIA.get(estado, (None, None))
+        habilitado = metodo is not None and not self.trabajando
+        # 'Generar acta' exige conexión con Claude.
+        if estado == "transcrita" and not claude_auth.conectado():
+            habilitado = False
+        self.btn_primario.configure(text=etiqueta, state="normal" if habilitado else "disabled")
+        hay_menu = estado in ("transcrita", "con_acta") and not self.trabajando
+        self.btn_menu.configure(state="normal" if hay_menu else "disabled")
+
+    def _menu_secundario(self):
+        estado = self._estado_sel()
+        if estado not in ("transcrita", "con_acta"):
+            return
+        m = Menu(self.root, tearoff=0)
+        m.add_command(label="Volver a transcribir", command=self._on_transcribir)
+        if estado == "con_acta":
+            m.add_command(label="Volver a generar acta…", command=self._on_generar_acta)
+        x = self.btn_menu.winfo_rootx()
+        y = self.btn_menu.winfo_rooty() + self.btn_menu.winfo_height()
+        try:
+            m.tk_popup(x, y)
+        finally:
+            m.grab_release()
 
     # --- micrófonos y grabaciones --------------------------------------
     def _refrescar_microfonos(self, reescanear=False):
@@ -439,6 +496,7 @@ class App:
         self.nombre_sel = nombre
         for nb, fila in self.botones_grab.items():
             fila.configure(fg_color=SEL if nb == nombre else "transparent")
+        self._actualizar_accion_primaria()
 
     def _hover(self, nombre, entra):
         fila = self.botones_grab.get(nombre)
@@ -804,6 +862,7 @@ class App:
                     self.lbl_tiempo.configure(text_color=TEXTO)
                     self.lbl_estado.configure(text="Grabación guardada.")
                     self._refrescar_grabaciones()
+                    self._actualizar_accion_primaria()
                 elif tipo == "fin_grabacion_vivo":
                     self.grabando = False
                     self.btn_rec.configure(text="●")
@@ -814,6 +873,7 @@ class App:
                         if evento[2] else
                         "Grabación guardada (la transcripción en vivo falló; usa «Transcribir»).")
                     self._refrescar_grabaciones()
+                    self._actualizar_accion_primaria()
                 elif tipo == "error_grabacion":
                     self.grabando = False
                     self.btn_rec.configure(text="●")
@@ -841,6 +901,7 @@ class App:
                     self.lbl_estado.configure(
                         text=f"Transcripción lista: {base}" if ok else "No se pudo transcribir.")
                     self._refrescar_grabaciones()
+                    self._actualizar_accion_primaria()
                 elif tipo == "acta_lista":
                     self.trabajando = False
                     self.lbl_estado.configure(text=f"Acta generada: {evento[1]}")
@@ -850,15 +911,18 @@ class App:
                         "Revísala antes de difundirla.")
                     # Al cerrar el aviso, abrir la carpeta donde quedó el acta.
                     _abrir_en_explorador(rutas.dir_reunion(evento[1]))
+                    self._actualizar_accion_primaria()
                 elif tipo == "pdf_listo":
                     self.trabajando = False
                     self.lbl_estado.configure(text=f"PDF generado: {evento[1]}")
                     _abrir_en_explorador(rutas.dir_reunion(evento[1]))
+                    self._actualizar_accion_primaria()
                 elif tipo == "error":
                     self.trabajando = False
                     self.barra_progreso.set(0)
                     self.lbl_estado.configure(text="Error.")
                     messagebox.showerror("recordIt", evento[1])
+                    self._actualizar_accion_primaria()
         except queue.Empty:
             pass
 
