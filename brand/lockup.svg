@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="64" viewBox="0 0 300 64">
+  
+  <g transform="translate(0,4) scale(0.58)"><path d="M22 16 h52 a12 12 0 0 1 12 12 v30 a12 12 0 0 1 -12 12 h-30 l-18 16 v-16 h-4 a12 12 0 0 1 -12 -12 v-30 a12 12 0 0 1 12 -12 z" fill="#066F90"></path>
+<rect x="33" y="36" width="8" height="14" rx="4" fill="#A8DDEB"></rect>
+<rect x="44" y="28" width="8" height="30" rx="4" fill="#ffffff"></rect>
+<rect x="55" y="34" width="8" height="18" rx="4" fill="#22C3E6"></rect></g>
+  <text x="66" y="46" font-family="&#39;Space Grotesk&#39;,sans-serif" font-weight="700" font-size="42" letter-spacing="-1.5">
+    <tspan fill="#1C2E3B">record</tspan><tspan fill="#22C3E6">It</tspan>
+  </text>
+</svg>
