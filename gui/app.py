@@ -9,6 +9,7 @@ PyInstaller). Todo el trabajo pesado (grabar, transcribir, API) corre en hilos d
 fondo; la UI se actualiza por cola + after() y nunca se toca desde un hilo.
 """
 import collections
+import contextlib
 import multiprocessing
 import os
 import queue
@@ -125,6 +126,38 @@ def _abrir_en_explorador(ruta: Path) -> None:
         subprocess.run(["open", str(ruta)])
     else:
         subprocess.run(["xdg-open", str(ruta)])
+
+
+@contextlib.contextmanager
+def _entorno_sistema():
+    """Restaura temporalmente las variables de entorno que PyInstaller altera.
+
+    En el ejecutable empaquetado, el cargador de PyInstaller fija
+    LD_LIBRARY_PATH (y equivalentes en macOS) a las librerías incluidas y
+    guarda el valor original en «<VAR>_ORIG». Un proceso externo lanzado con
+    ese entorno (el navegador) arranca con nuestras libs y muere al instante.
+    Este contexto deja el entorno del sistema durante la llamada y lo revierte
+    al salir. Fuera del empaquetado no toca nada.
+    """
+    if not getattr(sys, "frozen", False):
+        yield
+        return
+    variables = ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH")
+    previo = {v: os.environ.get(v) for v in variables}
+    try:
+        for v in variables:
+            original = os.environ.get(v + "_ORIG")
+            if original is not None:
+                os.environ[v] = original
+            else:
+                os.environ.pop(v, None)
+        yield
+    finally:
+        for v, valor in previo.items():
+            if valor is None:
+                os.environ.pop(v, None)
+            else:
+                os.environ[v] = valor
 
 
 class App:
@@ -848,7 +881,7 @@ class App:
         ctk.CTkButton(botones, text="Copiar comando", command=copiar,
                       fg_color=TEAL, hover_color=TEAL_HOVER).pack(side="left")
         ctk.CTkButton(botones, text="Abrir guía",
-                      command=lambda: webbrowser.open(claude_auth.URL_AYUDA),
+                      command=lambda: self._abrir_url(claude_auth.URL_AYUDA),
                       fg_color="transparent", border_width=1).pack(side="left", padx=8)
         ctk.CTkButton(botones, text="Cerrar", command=dlg.destroy,
                       fg_color="transparent").pack(side="right")
@@ -1015,6 +1048,29 @@ class App:
         self._info_actualizacion = info
         self.lbl_actualizacion.configure(text=f"⬆ Nueva versión v{info['version']}")
 
+    def _abrir_url(self, url):
+        """Abre una URL en el navegador; si falla, copia el enlace y avisa.
+
+        En el ejecutable empaquetado el navegador debe lanzarse con el entorno
+        del sistema (ver _entorno_sistema), o no arranca y el botón parece muerto.
+        """
+        if not url:
+            messagebox.showwarning("Descargar", "No hay enlace de descarga disponible.")
+            return
+        try:
+            with _entorno_sistema():
+                abierto = webbrowser.open(url)
+        except Exception:
+            abierto = False
+        if not abierto:
+            with contextlib.suppress(Exception):
+                self.root.clipboard_clear()
+                self.root.clipboard_append(url)
+            messagebox.showinfo(
+                "Descargar",
+                "No se pudo abrir el navegador automáticamente. "
+                "El enlace se ha copiado al portapapeles:\n\n" + url)
+
     def _abrir_detalles_actualizacion(self):
         info = self._info_actualizacion
         if not info:
@@ -1033,7 +1089,7 @@ class App:
         botones = ctk.CTkFrame(dlg, fg_color="transparent")
         botones.pack(fill="x", padx=22, pady=18)
         ctk.CTkButton(botones, text="Descargar", fg_color=TEAL, hover_color=TEAL_HOVER,
-                      command=lambda: webbrowser.open(info["url"])).pack(side="right")
+                      command=lambda: self._abrir_url(info["url"])).pack(side="right")
         ctk.CTkButton(botones, text="Cerrar", command=dlg.destroy, fg_color="transparent",
                       border_width=1, border_color=MUTED, text_color=MUTED,
                       hover_color=SEL).pack(side="right", padx=8)
