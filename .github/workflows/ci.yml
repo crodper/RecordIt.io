@@ -2,7 +2,8 @@ name: CI/CD
 
 # - test:    corre la suite en cada push a master y en cada PR.
 # - build:   en cada tag (v*), construye el AppImage (Linux) y el .exe (Windows).
-# - release: en cada tag, crea la Release de GitHub enlazando ambos binarios.
+# - release: en cada tag, crea la Release de GitHub enlazando ambos binarios,
+#            con notas de cambios de esa versión autogeneradas desde los commits.
 #
 # Lanzar una release:  git tag v1.0.0 && git push origin v1.0.0
 #
@@ -127,9 +128,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Intro fija con las instrucciones de descarga; debajo, gh añade las
+          # notas nativas de GitHub (cambios desde el tag anterior) vía --generate-notes.
           cat > notes.md <<'EOF'
-          recordIt ${{ github.ref_name }} — grabar, transcribir y generar actas de reunión.
-
           **Descargas:**
           - `recordIt-x86_64.AppImage` — Linux x86-64 (portable): `chmod +x` y ejecutar.
           - `recordIt.exe` — Windows x86-64.
@@ -140,5 +141,6 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "recordIt ${{ github.ref_name }}" \
             --notes-file notes.md \
+            --generate-notes \
             "artifacts/appimage/recordIt-x86_64.AppImage" \
             "artifacts/exe/recordIt.exe"
