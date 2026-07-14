@@ -100,7 +100,7 @@ tags: [acta, <2-4 etiquetas en minúscula sin tildes>]
 4. Una nota (formato '> **Nota:**') avisando de que el audio es de un solo canal sin diarización, por lo que NO se atribuyen frases a personas; lista las personas mencionadas si las hay; indica que los tramos dudosos van marcados como '(dudoso)'.
 5. Cuerpo organizado por TEMAS con encabezados (## 1. ..., ## 2. ...), en viñetas.
 6. Sección '## Decisiones tomadas' (lista numerada).
-7. Sección '## Acciones pendientes (action items)' como tabla con columnas: # | Acción | Responsable | Plazo (usa '—' si no consta).
+7. Sección '## Acciones pendientes (action items)' como lista de tareas de Obsidian: una casilla por acción con el formato '- [ ] <acción>'. Si consta el responsable, añádelo tras la acción como ' — <Responsable>'; si consta una fecha límite concreta, añádela al final como ' 📅 AAAA-MM-DD' (emoji de fecha de Obsidian Tasks; úsalo solo si puedes expresar la fecha en formato AAAA-MM-DD, en caso contrario indica el plazo como texto). Omite las partes que no consten.
 8. Sección '## Calendario resumido' si hay fechas relevantes.
 
 Reglas de contenido:

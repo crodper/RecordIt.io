@@ -51,3 +51,18 @@ def test_frontmatter_y_quita_h1_duplicado():
 def test_inline_negrita_y_cursiva():
     assert "<b>uno</b>" in pdf._inline("Punto **uno**")
     assert "<i>dudoso</i>" in pdf._inline("texto *dudoso* fin")
+
+
+def test_casillas_de_tarea_de_obsidian():
+    cuerpo = (
+        "## Acciones pendientes (action items)\n"
+        "- [ ] Enviar presupuesto — Ana 📅 2026-07-20\n"
+        "- [x] Cerrar ticket #123\n"
+    )
+    flow = pdf._construir_flowables(cuerpo, pdf._estilos())
+    casillas = [f for f in flow if isinstance(f, pdf._Casilla)]
+    assert len(casillas) == 2
+    assert casillas[0].marcada is False
+    assert casillas[1].marcada is True
+    # El emoji 📅 se sustituye por un separador legible (Helvetica no lo tiene).
+    assert "📅" not in casillas[0].parrafo.text

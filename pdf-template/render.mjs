@@ -105,10 +105,36 @@ function obsidianCallouts(md) {
   });
 }
 
+// Casillas de tarea de Obsidian: "- [ ] ..." / "- [x] ..." → <li class="task">
+function obsidianTasks(md) {
+  md.core.ruler.push('obsidian_tasks', (state) => {
+    const tokens = state.tokens;
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i].type !== 'inline') continue;
+      const m = /^\[([ xX])\]\s+/.exec(tokens[i].content);
+      if (!m) continue;
+
+      // localizar el list_item_open que contiene este inline
+      let li = -1;
+      for (let k = i - 1; k >= 0; k--) {
+        if (tokens[k].type === 'list_item_open') { li = k; break; }
+        if (tokens[k].type === 'list_item_close' || tokens[k].type === 'bullet_list_open') break;
+      }
+      if (li === -1) continue;
+
+      tokens[li].attrJoin('class', m[1] === ' ' ? 'task' : 'task task-done');
+      // quitar el marcador "[ ] " del cuerpo y re-parsear
+      tokens[i].content = tokens[i].content.slice(m[0].length);
+      state.md.inline.parse(tokens[i].content, state.md, state.env, tokens[i].children = []);
+    }
+  });
+}
+
 // ---------- markdown → html ----------
 const md = new MarkdownIt({ html: true, linkify: true, typographer: false });
 md.use(anchor, { slugify, tabIndex: false });
 md.use(obsidianCallouts);
+md.use(obsidianTasks);
 
 let bodyHtml = md.render(body);
 // el título ya aparece en la portada → quitar el primer H1 del cuerpo

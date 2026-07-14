@@ -14,9 +14,9 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import (BaseDocTemplate, Frame, Image, ListFlowable,
-                                ListItem, PageBreak, PageTemplate, Paragraph,
-                                Spacer, Table, TableStyle)
+from reportlab.platypus import (BaseDocTemplate, Flowable, Frame, Image,
+                                ListFlowable, ListItem, PageBreak, PageTemplate,
+                                Paragraph, Spacer, Table, TableStyle)
 
 # --- Paleta (espejo de pdf-template/brand.json) -----------------------------
 NAVY = colors.HexColor("#243447")
@@ -51,6 +51,7 @@ def _estilos():
                              spaceBefore=8, spaceAfter=2),
         "nota": ParagraphStyle("nota", parent=base, fontSize=9.5, leading=13,
                               textColor=NAVY, leftIndent=8, rightIndent=8),
+        "tarea": ParagraphStyle("tarea", parent=base, spaceAfter=2),
         "celda": ParagraphStyle("celda", parent=base, fontSize=9, leading=12),
         "celda_h": ParagraphStyle("celda_h", parent=base, fontSize=9, leading=12,
                                  fontName="Helvetica-Bold", textColor=colors.white),
@@ -102,6 +103,47 @@ def _celdas(linea):
     return [c.strip() for c in linea.strip().strip("|").split("|")]
 
 
+class _Casilla(Flowable):
+    """Ítem de tarea de Obsidian: dibuja una casilla (☐/☑) + el texto.
+
+    Se dibuja como vector (no como glifo de fuente) para que se vea en
+    cualquier visor: las fuentes base-14 tipo ZapfDingbats no van embebidas
+    y muchos visores las sustituyen por un cuadrado relleno.
+    """
+
+    INDENT = 8   # sangría izquierda de la casilla
+    LADO = 8     # lado de la casilla
+    HUECO = 7    # separación casilla → texto
+
+    def __init__(self, parrafo, marcada=False):
+        super().__init__()
+        self.parrafo = parrafo
+        self.marcada = marcada
+
+    def wrap(self, ancho_disp, alto_disp):
+        sangria_texto = self.INDENT + self.LADO + self.HUECO
+        _, alto_parr = self.parrafo.wrap(ancho_disp - sangria_texto, alto_disp)
+        self.width = ancho_disp
+        self.height = max(alto_parr, self.LADO)
+        return self.width, self.height
+
+    def draw(self):
+        c = self.canv
+        lead = self.parrafo.style.leading or self.LADO
+        # centrar la casilla sobre la primera línea del párrafo
+        y = self.height - (lead + self.LADO) / 2
+        c.setStrokeColor(TEAL)
+        c.setLineWidth(1)
+        c.roundRect(self.INDENT, y, self.LADO, self.LADO, 1.5, stroke=1, fill=0)
+        if self.marcada:
+            c.setLineWidth(1.2)
+            c.line(self.INDENT + 1.5, y + self.LADO * 0.45,
+                   self.INDENT + self.LADO * 0.4, y + 1.5)
+            c.line(self.INDENT + self.LADO * 0.4, y + 1.5,
+                   self.INDENT + self.LADO - 0.5, y + self.LADO - 0.5)
+        self.parrafo.drawOn(c, self.INDENT + self.LADO + self.HUECO, 0)
+
+
 def _construir_flowables(cuerpo, est):
     flow = []
     lineas = cuerpo.splitlines()
@@ -139,6 +181,20 @@ def _construir_flowables(cuerpo, est):
                 citas.append(lineas[i].strip()[1:].strip())
                 i += 1
             flow.append(_nota(" ".join(citas), est))
+            continue
+
+        # Listas de tareas (casillas de Obsidian: "- [ ] ...")
+        if re.match(r"^[-*]\s+\[[ xX]\]\s+", s):
+            while i < n:
+                mt = re.match(r"^[-*]\s+\[([ xX])\]\s+(.*)", lineas[i].strip())
+                if not mt:
+                    break
+                # El emoji 📅 no existe en Helvetica: lo sustituimos por un
+                # separador legible y dejamos la fecha.
+                texto = re.sub(r"\s*📅\s*", " · ", mt.group(2))
+                parr = Paragraph(_inline(texto), est["tarea"])
+                flow.append(_Casilla(parr, marcada=mt.group(1) in ("x", "X")))
+                i += 1
             continue
 
         # Listas (con viñeta o numeradas)

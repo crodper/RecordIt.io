@@ -57,6 +57,11 @@ strong { color: var(--c-dark); }
 ul, ol { margin: 0.5em 0; padding-left: 1.5em; }
 li { margin: 0.2em 0; }
 
+/* Casillas de tarea de Obsidian ("- [ ] ...") */
+li.task { list-style: none; margin-left: -1.1em; }
+li.task::before { content: "\2610"; margin-right: 0.4em; color: var(--c-teal); }
+li.task.task-done::before { content: "\2611"; }
+
 hr { border: none; border-top: 1px solid var(--c-rule); margin: 1.4em 0; }
 
 /* ---------- Tablas ---------- */
