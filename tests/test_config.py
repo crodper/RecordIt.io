@@ -24,6 +24,14 @@ def test_carpeta_datos_defecto_y_roundtrip(monkeypatch, tmp_path):
     assert config.carpeta_datos() == "/data/recordit"
 
 
+def test_gitlab_token_defecto_y_roundtrip(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    assert config.gitlab_token() is None
+    config.guardar({"gitlab_token": "glpat-xxx"})
+    assert config.gitlab_token() == "glpat-xxx"
+
+
 def test_microfono_persiste(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("APPDATA", str(tmp_path))

@@ -73,6 +73,14 @@ def carpeta_datos():
     return cargar().get("carpeta_datos") or None
 
 
+def gitlab_token():
+    """Personal Access Token de GitLab (read_api) para buscar actualizaciones.
+
+    Solo aplica a builds de origen GitLab (interno). None si no se ha puesto.
+    """
+    return cargar().get("gitlab_token") or None
+
+
 def microfono():
     """Nombre del último micrófono usado (para reseleccionarlo al arrancar)."""
     return cargar().get("microfono") or None
