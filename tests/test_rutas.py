@@ -9,6 +9,34 @@ def test_base_datos_usa_override(monkeypatch, tmp_path):
     assert rutas.base_datos() == tmp_path
 
 
+def test_base_datos_usa_config_si_no_hay_override(monkeypatch, tmp_path):
+    from recordit import config
+    monkeypatch.delenv("RECORDIT_DATA_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "cfg"))
+    datos = tmp_path / "datos"
+    config.guardar({"carpeta_datos": str(datos)})
+    assert rutas.base_datos() == datos
+    assert rutas.dir_grabaciones() == datos / "grabaciones"
+
+
+def test_override_gana_sobre_config(monkeypatch, tmp_path):
+    from recordit import config
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "cfg"))
+    monkeypatch.setenv("RECORDIT_DATA_DIR", str(tmp_path / "forzado"))
+    config.guardar({"carpeta_datos": str(tmp_path / "datos")})
+    assert rutas.base_datos() == tmp_path / "forzado"
+
+
+def test_base_datos_defecto_sin_env_ni_config(monkeypatch, tmp_path):
+    monkeypatch.delenv("RECORDIT_DATA_DIR", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "cfg"))
+    # modo desarrollo: la raíz del repo (recordit/ está un nivel por debajo)
+    assert rutas.base_datos() == Path(rutas.__file__).resolve().parent.parent
+
+
 def test_rutas_reunion_nombres_cortos(monkeypatch, tmp_path):
     monkeypatch.setenv("RECORDIT_DATA_DIR", str(tmp_path))
     base = "reunion_2026-06-16_10-06-12"

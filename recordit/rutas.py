@@ -9,6 +9,8 @@ import os
 import sys
 from pathlib import Path
 
+from . import config
+
 
 # Formatos de audio que recordIt acepta como entrada. La grabación propia
 # genera siempre .wav, pero se admite importar audio externo (sobre todo .m4a
@@ -22,10 +24,17 @@ def _es_empaquetado() -> bool:
 
 
 def base_datos() -> Path:
-    """Carpeta raíz donde viven grabaciones/ y transcripciones/."""
+    """Carpeta raíz donde viven grabaciones/ y transcripciones/.
+
+    Precedencia: variable RECORDIT_DATA_DIR (tests/uso avanzado) → carpeta
+    elegida por el usuario en Ajustes (config) → defecto del sistema.
+    """
     override = os.environ.get("RECORDIT_DATA_DIR")
     if override:
         return Path(override)
+    carpeta = config.carpeta_datos()
+    if carpeta:
+        return Path(carpeta)
     if _es_empaquetado():
         return Path.home() / "recordIt"
     # modo dev: la raíz del repo (este fichero está en recordit/)

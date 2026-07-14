@@ -68,6 +68,11 @@ def modelo_openai() -> str:
     return cargar().get("modelo_openai", MODELO_OPENAI_POR_DEFECTO)
 
 
+def carpeta_datos():
+    """Carpeta raíz de salidas elegida por el usuario, o None (usar defecto)."""
+    return cargar().get("carpeta_datos") or None
+
+
 def microfono():
     """Nombre del último micrófono usado (para reseleccionarlo al arrancar)."""
     return cargar().get("microfono") or None

@@ -16,6 +16,14 @@ def test_defaults_sin_fichero(monkeypatch, tmp_path):
     assert config.modelo_acta() == "claude-opus-4-8"
 
 
+def test_carpeta_datos_defecto_y_roundtrip(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    assert config.carpeta_datos() is None
+    config.guardar({"carpeta_datos": "/data/recordit"})
+    assert config.carpeta_datos() == "/data/recordit"
+
+
 def test_microfono_persiste(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("APPDATA", str(tmp_path))
