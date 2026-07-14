@@ -59,6 +59,11 @@ SOPORTE = "¿Has encontrado un error? Abre una incidencia en el repositorio del 
 MODELOS = {"Opus (más capaz)": "claude-opus-4-8",
            "Sonnet (más rápido)": "claude-sonnet-4-6"}
 MODELOS_INV = {v: k for k, v in MODELOS.items()}
+MODELOS_OPENAI = {"GPT-5 (más capaz)": "gpt-5",
+                  "GPT-5 mini (más rápido)": "gpt-5-mini"}
+MODELOS_OPENAI_INV = {v: k for k, v in MODELOS_OPENAI.items()}
+PROVEEDORES = {"Claude": "claude", "OpenAI": "openai"}
+PROVEEDORES_INV = {v: k for k, v in PROVEEDORES.items()}
 
 
 def _modo_oscuro() -> bool:
@@ -379,10 +384,28 @@ class App:
                           capstyle="round")
 
     # --- estado ---------------------------------------------------------
+    def _ia_estado(self):
+        """Estado del proveedor de IA activo para redactar el acta.
+
+        Devuelve (proveedor, metodo, key, modelo):
+        - 'claude': metodo 'cli'/'api' (None si no conectado), key para 'api'.
+        - 'openai': metodo 'api' si hay API key guardada (None si no), key la de OpenAI.
+        """
+        proveedor = config.proveedor()
+        if proveedor == "openai":
+            key = config.openai_api_key()
+            return ("openai", "api" if key else None, key, config.modelo_openai())
+        metodo, key = claude_auth.estado()
+        return ("claude", metodo, key, config.modelo_acta())
+
+    def _ia_conectada(self) -> bool:
+        return self._ia_estado()[1] is not None
+
     def _actualizar_estado_acta(self):
-        conectado = claude_auth.conectado()
-        if conectado:
-            self.lbl_conexion.configure(text="● Claude conectado", text_color=VERDE)
+        proveedor, metodo, _key, _modelo = self._ia_estado()
+        if metodo is not None:
+            nombre = "OpenAI" if proveedor == "openai" else "Claude"
+            self.lbl_conexion.configure(text=f"● {nombre} conectado", text_color=VERDE)
         else:
             self.lbl_conexion.configure(text="● Sin conexión", text_color=MUTED)
         self._actualizar_accion_primaria()
@@ -415,8 +438,8 @@ class App:
         estado = self._estado_sel()
         etiqueta, metodo = self._ACCION_PRIMARIA.get(estado, (None, None))
         habilitado = metodo is not None and not self.trabajando
-        # 'Generar acta' exige conexión con Claude.
-        if estado == "transcrita" and not claude_auth.conectado():
+        # 'Generar acta' exige un proveedor de IA conectado.
+        if estado == "transcrita" and not self._ia_conectada():
             habilitado = False
         self.btn_primario.configure(text=etiqueta, state="normal" if habilitado else "disabled")
         hay_menu = estado in ("transcrita", "con_acta") and not self.trabajando
@@ -641,25 +664,26 @@ class App:
         if not txt.exists():
             messagebox.showinfo("recordIt", "Primero transcribe esta grabación.")
             return
-        metodo, key = claude_auth.estado()
+        proveedor, metodo, key, modelo = self._ia_estado()
         if metodo is None:
             messagebox.showinfo(
                 "recordIt",
-                "No has conectado con Claude.\n\nVe a «⚙ Ajustes» y pulsa "
-                "«Conectar con Claude» para poder generar el acta.")
+                "No has conectado ningún proveedor de IA.\n\nVe a «⚙ Ajustes» para "
+                "conectar Claude o pegar tu API key de OpenAI y poder generar el acta.")
             return
         if self.trabajando:
             return
         self.trabajando = True
-        modelo = config.modelo_acta()
         fecha_iso, fecha = self._fechas(base)
         transcripcion_texto = txt.read_text(encoding="utf-8")
+        nombre_ia = "OpenAI" if proveedor == "openai" else "Claude"
 
         def trabajo():
             try:
-                self.cola.put(("estado", "Redactando el acta con Claude…"))
+                self.cola.put(("estado", f"Redactando el acta con {nombre_ia}…"))
                 md = acta.redactar_acta(transcripcion_texto, fecha=fecha, base=base,
-                                        metodo=metodo, api_key=key, modelo=modelo)
+                                        proveedor=proveedor, metodo=metodo,
+                                        api_key=key, modelo=modelo)
                 rutas.ruta_acta_md(base, fecha_iso).write_text(md, encoding="utf-8")
                 self.cola.put(("acta_lista", base))
             except Exception as exc:  # noqa: BLE001
@@ -711,22 +735,23 @@ class App:
             return
         base = rutas.base_desde_audio(rutas.dir_grabaciones() / nombre)
         md = self._buscar_acta_md(base)
-        # Si hay que generar el acta, necesitamos conexión con Claude (no autoarreglable).
-        metodo, key = (None, None)
+        # Si hay que generar el acta, necesitamos un proveedor de IA (no autoarreglable).
+        proveedor, metodo, key, modelo = ("claude", None, None, None)
         if md is None:
-            metodo, key = claude_auth.estado()
+            proveedor, metodo, key, modelo = self._ia_estado()
             if metodo is None:
                 messagebox.showinfo(
                     "recordIt",
-                    "Para el PDF hace falta el acta, y para el acta hay que conectar con "
-                    "Claude.\n\nVe a «⚙ Ajustes» y pulsa «Conectar con Claude».")
+                    "Para el PDF hace falta el acta, y para el acta hay que conectar un "
+                    "proveedor de IA.\n\nVe a «⚙ Ajustes» para conectar Claude o pegar "
+                    "tu API key de OpenAI.")
                 return
         if self.trabajando:
             return
         self.trabajando = True
         wav = rutas.dir_grabaciones() / nombre
-        modelo = config.modelo_acta()
         fecha_iso, fecha = self._fechas(base)
+        nombre_ia = "OpenAI" if proveedor == "openai" else "Claude"
 
         def trabajo():
             try:
@@ -734,10 +759,11 @@ class App:
                 if ruta_md is None:
                     # Encadena lo que falte: transcripción -> acta -> PDF.
                     self._transcribir_sync(wav, base)
-                    self.cola.put(("estado", "Redactando el acta con Claude…"))
+                    self.cola.put(("estado", f"Redactando el acta con {nombre_ia}…"))
                     texto = rutas.ruta_transcripcion(base).read_text(encoding="utf-8")
                     md_txt = acta.redactar_acta(texto, fecha=fecha, base=base,
-                                                metodo=metodo, api_key=key, modelo=modelo)
+                                                proveedor=proveedor, metodo=metodo,
+                                                api_key=key, modelo=modelo)
                     ruta_md = rutas.ruta_acta_md(base, fecha_iso)
                     ruta_md.write_text(md_txt, encoding="utf-8")
                 self.cola.put(("estado", "Generando el PDF del acta…"))
@@ -768,7 +794,9 @@ class App:
         self.cola.put(("error", f"{exc}\n\nDetalle técnico guardado en:\n{ruta}"))
 
     def _texto_conexion(self):
-        metodo, _ = claude_auth.estado()
+        proveedor, metodo, _key, _modelo = self._ia_estado()
+        if proveedor == "openai":
+            return "✓ API key de OpenAI guardada" if metodo else "○ Sin API key de OpenAI"
         if metodo == "cli":
             return "✓ Conectado mediante Claude Code (CLI)"
         if metodo == "api":
@@ -820,33 +848,64 @@ class App:
         actual = config.cargar()
         dlg = ctk.CTkToplevel(self.root)
         dlg.title("Ajustes")
-        dlg.geometry("460x420")
+        dlg.geometry("460x540")
         dlg.transient(self.root)
         dlg.after(120, dlg.grab_set)
 
-        ctk.CTkLabel(dlg, text="Conexión con Claude", font=self.f_seccion,
+        ctk.CTkLabel(dlg, text="Proveedor de IA para el acta", font=self.f_seccion,
                      anchor="w").pack(fill="x", padx=22, pady=(22, 2))
-        lbl_estado = ctk.CTkLabel(dlg, text=self._texto_conexion(), font=self.f_base,
-                                  anchor="w", text_color=MUTED)
-        lbl_estado.pack(fill="x", padx=22)
+        var_prov = StringVar(value=PROVEEDORES_INV.get(config.proveedor(), "Claude"))
 
-        def conectar():
-            metodo, _msg = claude_auth.conectar()
-            if metodo:
-                lbl_estado.configure(text=self._texto_conexion())
-                self._actualizar_estado_acta()
+        # Modelos y key persisten en sus StringVar aunque se cambie de sección.
+        var_modelo = StringVar(value=MODELOS_INV.get(
+            actual.get("modelo_acta", config.MODELO_POR_DEFECTO), "Opus (más capaz)"))
+        var_modelo_oa = StringVar(value=MODELOS_OPENAI_INV.get(
+            actual.get("modelo_openai", config.MODELO_OPENAI_POR_DEFECTO),
+            "GPT-5 (más capaz)"))
+        var_key_oa = StringVar(value=actual.get("openai_api_key", "") or "")
+
+        cont = ctk.CTkFrame(dlg, fg_color="transparent")
+
+        def render(_valor=None):
+            for w in cont.winfo_children():
+                w.destroy()
+            if PROVEEDORES.get(var_prov.get()) == "openai":
+                ctk.CTkLabel(cont, text="API key de OpenAI", font=self.f_base,
+                             anchor="w").pack(fill="x", padx=22, pady=(16, 4))
+                ctk.CTkEntry(cont, textvariable=var_key_oa, show="•",
+                             placeholder_text="sk-…").pack(fill="x", padx=22)
+                ctk.CTkLabel(cont, text="Modelo (OpenAI)", font=self.f_base,
+                             anchor="w").pack(fill="x", padx=22, pady=(16, 4))
+                ctk.CTkSegmentedButton(cont, values=list(MODELOS_OPENAI.keys()),
+                                       variable=var_modelo_oa, selected_color=TEAL,
+                                       selected_hover_color=TEAL_HOVER).pack(padx=22)
             else:
-                self._mostrar_guia_claude(dlg)
+                lbl_estado = ctk.CTkLabel(cont, text=self._texto_conexion(),
+                                          font=self.f_base, anchor="w", text_color=MUTED)
+                lbl_estado.pack(fill="x", padx=22, pady=(16, 0))
 
-        ctk.CTkButton(dlg, text="Conectar con Claude", command=conectar, fg_color=TEAL,
-                      hover_color=TEAL_HOVER, font=self.f_base).pack(padx=22, pady=(8, 0))
+                def conectar():
+                    metodo, _msg = claude_auth.conectar()
+                    if metodo:
+                        lbl_estado.configure(text=self._texto_conexion())
+                        self._actualizar_estado_acta()
+                    else:
+                        self._mostrar_guia_claude(dlg)
 
-        ctk.CTkLabel(dlg, text="Modelo del acta (al usar la API)", font=self.f_base,
-                     anchor="w").pack(fill="x", padx=22, pady=(16, 4))
-        modelo_actual = actual.get("modelo_acta", config.MODELO_POR_DEFECTO)
-        var_modelo = StringVar(value=MODELOS_INV.get(modelo_actual, "Opus (más capaz)"))
-        ctk.CTkSegmentedButton(dlg, values=list(MODELOS.keys()), variable=var_modelo,
-                               selected_color=TEAL, selected_hover_color=TEAL_HOVER).pack(padx=22)
+                ctk.CTkButton(cont, text="Conectar con Claude", command=conectar,
+                              fg_color=TEAL, hover_color=TEAL_HOVER,
+                              font=self.f_base).pack(padx=22, pady=(8, 0))
+                ctk.CTkLabel(cont, text="Modelo (Claude)", font=self.f_base,
+                             anchor="w").pack(fill="x", padx=22, pady=(16, 4))
+                ctk.CTkSegmentedButton(cont, values=list(MODELOS.keys()),
+                                       variable=var_modelo, selected_color=TEAL,
+                                       selected_hover_color=TEAL_HOVER).pack(padx=22)
+
+        ctk.CTkSegmentedButton(dlg, values=list(PROVEEDORES.keys()), variable=var_prov,
+                               command=render, selected_color=TEAL,
+                               selected_hover_color=TEAL_HOVER).pack(padx=22, pady=(4, 0))
+        cont.pack(fill="x")
+        render()
 
         ctk.CTkLabel(dlg, text="Tema", font=self.f_base,
                      anchor="w").pack(fill="x", padx=22, pady=(16, 4))
@@ -863,7 +922,12 @@ class App:
         botones.pack(side="bottom", fill="x", padx=22, pady=20)
 
         def guardar():
+            actual["proveedor"] = PROVEEDORES.get(var_prov.get(),
+                                                  config.PROVEEDOR_POR_DEFECTO)
             actual["modelo_acta"] = MODELOS.get(var_modelo.get(), config.MODELO_POR_DEFECTO)
+            actual["modelo_openai"] = MODELOS_OPENAI.get(var_modelo_oa.get(),
+                                                         config.MODELO_OPENAI_POR_DEFECTO)
+            actual["openai_api_key"] = var_key_oa.get().strip()
             config.guardar(actual)
             self._actualizar_estado_acta()
             dlg.destroy()
