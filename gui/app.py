@@ -23,8 +23,9 @@ from tkinter import Canvas, Menu, StringVar, filedialog, messagebox
 
 import customtkinter as ctk
 
-from recordit import (acta, audio, claude_auth, config, integracion, pdf, preproceso,
-                      registro, rutas, transcripcion, transcripcion_vivo)
+from recordit import (acta, actualizaciones, audio, claude_auth, config, integracion,
+                      pdf, preproceso, registro, rutas, transcripcion, transcripcion_vivo)
+from recordit import ORIGEN
 from recordit import __version__ as VERSION
 
 # --- Paleta ----------------------------------------------------------------
@@ -149,6 +150,7 @@ class App:
         self.botones_grab = {}
         self.transcribiendo = set()  # bases con transcripción en curso (dot ◐)
         self._mic_idx = {}
+        self._info_actualizacion = None  # dict de la nueva versión, si la hay
         self.niveles = collections.deque(maxlen=400)
 
         self.f_marca = ctk.CTkFont(size=22, weight="bold")
@@ -167,6 +169,8 @@ class App:
         if not claude_auth.conectado():
             claude_auth.conectar()
         self._actualizar_estado_acta()
+        # Comprobación de nueva versión al arrancar (en segundo plano, silenciosa).
+        threading.Thread(target=self._buscar_actualizacion, daemon=True).start()
         self.root.after(60, self._dibujar_onda)
         self.root.after(50, self._drenar_cola)
 
@@ -246,12 +250,17 @@ class App:
         self.lbl_estado = ctk.CTkLabel(estado, text="Listo.", font=self.f_sub,
                                        text_color=MUTED, anchor="w")
         self.lbl_estado.grid(row=0, column=0, sticky="w")
+        # Indicador discreto de nueva versión (oculto hasta que se detecte una).
+        self.lbl_actualizacion = ctk.CTkLabel(estado, text="", font=self.f_sub,
+                                              text_color=TEAL, anchor="e", cursor="hand2")
+        self.lbl_actualizacion.grid(row=0, column=1, sticky="e", padx=(0, 12))
+        self.lbl_actualizacion.bind("<Button-1>", lambda _e: self._abrir_detalles_actualizacion())
         # Firma de autoría + versión.
         ctk.CTkLabel(estado, text=f"{AUTOR}  ·  v{VERSION}", font=self.f_sub,
-                     text_color=MUTED, anchor="e").grid(row=0, column=1, sticky="e")
+                     text_color=MUTED, anchor="e").grid(row=0, column=2, sticky="e")
         self.barra_progreso = ctk.CTkProgressBar(estado, progress_color=TEAL, height=6)
         self.barra_progreso.set(0)
-        self.barra_progreso.grid(row=1, column=0, columnspan=2, sticky="we", pady=(4, 0))
+        self.barra_progreso.grid(row=1, column=0, columnspan=3, sticky="we", pady=(4, 0))
 
     def _construir_panel_grabar(self, master):
         t = ctk.CTkFrame(master, fg_color=TARJETA, corner_radius=18)
@@ -848,7 +857,7 @@ class App:
         actual = config.cargar()
         dlg = ctk.CTkToplevel(self.root)
         dlg.title("Ajustes")
-        dlg.geometry("460x660")
+        dlg.geometry("460x760" if ORIGEN == "gitlab" else "460x660")
         dlg.transient(self.root)
         dlg.after(120, dlg.grab_set)
 
@@ -941,6 +950,18 @@ class App:
                       border_color=MUTED, text_color=MUTED, hover_color=SEL).pack(
             side="left", padx=8)
 
+        # --- Cuenta de GitLab (solo en builds internos, para buscar updates) ---
+        var_gitlab_token = None
+        if ORIGEN == "gitlab":
+            ctk.CTkLabel(dlg, text="Token de GitLab (para buscar actualizaciones)",
+                         font=self.f_seccion, anchor="w").pack(fill="x", padx=22, pady=(18, 2))
+            ctk.CTkLabel(dlg, text="Personal Access Token con scope read_api.",
+                         font=self.f_sub, text_color=MUTED, anchor="w").pack(
+                fill="x", padx=22)
+            var_gitlab_token = StringVar(value=actual.get("gitlab_token", "") or "")
+            ctk.CTkEntry(dlg, textvariable=var_gitlab_token, show="•",
+                         placeholder_text="glpat-…").pack(fill="x", padx=22, pady=(4, 0))
+
         ctk.CTkLabel(dlg, text="Tema", font=self.f_base,
                      anchor="w").pack(fill="x", padx=22, pady=(16, 4))
         var_tema = StringVar(value="Oscuro" if _modo_oscuro() else "Claro")
@@ -962,6 +983,8 @@ class App:
             actual["modelo_openai"] = MODELOS_OPENAI.get(var_modelo_oa.get(),
                                                          config.MODELO_OPENAI_POR_DEFECTO)
             actual["openai_api_key"] = var_key_oa.get().strip()
+            if var_gitlab_token is not None:
+                actual["gitlab_token"] = var_gitlab_token.get().strip()
             config.guardar(actual)
             self._actualizar_estado_acta()
             dlg.destroy()
@@ -980,6 +1003,40 @@ class App:
         # Los widgets CTk con color en tupla (claro, oscuro) ya conmutan solos;
         # solo el canvas de la onda (Tkinter puro) necesita repintarse a mano.
         self._dibujar_onda()
+
+    # --- actualizaciones -----------------------------------------------
+    def _buscar_actualizacion(self):
+        """Comprueba si hay una versión más reciente (en un hilo de fondo)."""
+        info = actualizaciones.comprobar_actualizacion(VERSION)
+        if info:
+            self.cola.put(("actualizacion", info))
+
+    def _mostrar_indicador_actualizacion(self, info):
+        self._info_actualizacion = info
+        self.lbl_actualizacion.configure(text=f"⬆ Nueva versión v{info['version']}")
+
+    def _abrir_detalles_actualizacion(self):
+        info = self._info_actualizacion
+        if not info:
+            return
+        dlg = ctk.CTkToplevel(self.root)
+        dlg.title("Nueva versión disponible")
+        dlg.geometry("520x460")
+        dlg.transient(self.root)
+        dlg.after(120, dlg.grab_set)
+        ctk.CTkLabel(dlg, text=f"recordIt v{info['version']} disponible",
+                     font=self.f_seccion, anchor="w").pack(fill="x", padx=22, pady=(22, 8))
+        caja = ctk.CTkTextbox(dlg, font=self.f_base, wrap="word")
+        caja.pack(fill="both", expand=True, padx=22)
+        caja.insert("1.0", info.get("notas") or "(Sin notas de la versión.)")
+        caja.configure(state="disabled")
+        botones = ctk.CTkFrame(dlg, fg_color="transparent")
+        botones.pack(fill="x", padx=22, pady=18)
+        ctk.CTkButton(botones, text="Descargar", fg_color=TEAL, hover_color=TEAL_HOVER,
+                      command=lambda: webbrowser.open(info["url"])).pack(side="right")
+        ctk.CTkButton(botones, text="Cerrar", command=dlg.destroy, fg_color="transparent",
+                      border_width=1, border_color=MUTED, text_color=MUTED,
+                      hover_color=SEL).pack(side="right", padx=8)
 
     # --- bucle de eventos de la cola -----------------------------------
     def _drenar_cola(self):
@@ -1022,6 +1079,8 @@ class App:
                         f"{evento[1]}\n\nPrueba con otro dispositivo del desplegable.")
                 elif tipo == "estado":
                     self.lbl_estado.configure(text=evento[1])
+                elif tipo == "actualizacion":
+                    self._mostrar_indicador_actualizacion(evento[1])
                 elif tipo == "progreso":
                     actual, total = evento[1], evento[2]
                     self.barra_progreso.set((actual / total) if total else 0)
