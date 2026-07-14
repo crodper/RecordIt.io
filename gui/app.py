@@ -20,7 +20,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
-from tkinter import Canvas, Menu, StringVar, filedialog, messagebox
+from tkinter import Canvas, StringVar, filedialog, messagebox
 
 import customtkinter as ctk
 
@@ -119,6 +119,31 @@ def _tintar(img, rgb):
     return img
 
 
+def _glifo_marca(alto=34):
+    """Dibuja el glifo de marca (burbuja de conversación + barras) como imagen
+    RGBA transparente, según la geometría de brand/icon.svg.
+
+    Se dibuja en vez de rasterizar el SVG (sin dependencia de un render SVG) y
+    vale igual en tema claro y oscuro: las barras van sobre la burbuja teal, no
+    sobre el fondo de la app.
+    """
+    from PIL import Image, ImageDraw
+    ss = 4  # supersampling: bordes suaves al reducir
+    lienzo = Image.new("RGBA", (96 * ss, 96 * ss), (0, 0, 0, 0))
+    d = ImageDraw.Draw(lienzo)
+    def e(*vals):  # escala coordenadas del viewBox 96x96
+        return [v * ss for v in vals]
+    teal = (6, 111, 144, 255)
+    d.rounded_rectangle(e(10, 16, 86, 70), radius=12 * ss, fill=teal)
+    d.polygon([tuple(e(44, 70)), tuple(e(26, 86)), tuple(e(26, 70))], fill=teal)
+    d.rounded_rectangle(e(33, 36, 41, 50), radius=4 * ss, fill=(168, 221, 235, 255))
+    d.rounded_rectangle(e(44, 28, 52, 58), radius=4 * ss, fill=(255, 255, 255, 255))
+    d.rounded_rectangle(e(55, 34, 63, 52), radius=4 * ss, fill=(34, 195, 230, 255))
+    recorte = lienzo.crop(lienzo.getbbox())
+    ancho = round(recorte.width * alto / recorte.height)
+    return recorte.resize((ancho, alto), Image.LANCZOS)
+
+
 def _abrir_en_explorador(ruta: Path) -> None:
     if os.name == "nt":
         os.startfile(ruta)  # noqa: A002
@@ -211,6 +236,7 @@ class App:
         """Carga logo e iconos como CTkImage (claro/oscuro). Si falla, queda vacío
         y la interfaz usa texto/caracteres como reserva."""
         self.logo_img = None
+        self.logo_icono = None
         self.iconos = {}
         self._png = {}  # PIL crudos, para tintar bajo demanda
         try:
@@ -224,6 +250,12 @@ class App:
                 dark_image=Image.open(d / "logo_dark_64.png"), size=(173, 46))
         except Exception:  # noqa: BLE001
             self.logo_img = None
+        try:  # glifo de marca (burbuja + barras) para el lockup de la cabecera
+            glifo = _glifo_marca(34)
+            self.logo_icono = ctk.CTkImage(light_image=glifo, dark_image=glifo,
+                                           size=(glifo.width, glifo.height))
+        except Exception:  # noqa: BLE001
+            self.logo_icono = None
         for nombre in ("micro", "transcribir", "acta", "carpeta", "ajustes", "grabaciones"):
             try:
                 base = Image.open(d / f"{nombre}.png").convert("RGBA")
@@ -253,10 +285,15 @@ class App:
         cab.grid_columnconfigure(0, weight=1)
         izq = ctk.CTkFrame(cab, fg_color="transparent")
         izq.grid(row=0, column=0, sticky="w")
+        fila_logo = ctk.CTkFrame(izq, fg_color="transparent")
+        fila_logo.pack(anchor="w")
+        if self.logo_icono is not None:
+            ctk.CTkLabel(fila_logo, text="", image=self.logo_icono).pack(side="left", padx=(0, 8))
         if self.logo_img is not None:
-            ctk.CTkLabel(izq, text="", image=self.logo_img).pack(anchor="w")
+            ctk.CTkLabel(fila_logo, text="", image=self.logo_img).pack(side="left")
         else:
-            ctk.CTkLabel(izq, text="recordIt", font=self.f_marca, text_color=TEAL).pack(anchor="w")
+            ctk.CTkLabel(fila_logo, text="recordIt", font=self.f_marca,
+                         text_color=TEAL).pack(side="left")
         ctk.CTkLabel(izq, text="Grabar · Transcribir · Acta", font=self.f_sub,
                      text_color=MUTED).pack(anchor="w")
         self.lbl_conexion = ctk.CTkLabel(cab, text="", font=self.f_sub, text_color=MUTED)
@@ -491,16 +528,62 @@ class App:
         estado = self._estado_sel()
         if estado not in ("transcrita", "con_acta"):
             return
-        m = Menu(self.root, tearoff=0)
-        m.add_command(label="Volver a transcribir", command=self._on_transcribir)
+        acciones = [("Volver a transcribir", self._on_transcribir)]
         if estado == "con_acta":
-            m.add_command(label="Volver a generar acta…", command=self._on_generar_acta)
-        x = self.btn_menu.winfo_rootx()
-        y = self.btn_menu.winfo_rooty() + self.btn_menu.winfo_height()
-        try:
-            m.tk_popup(x, y)
-        finally:
-            m.grab_release()
+            acciones.append(("Volver a generar acta…", self._on_generar_acta))
+        self._mostrar_menu_flotante(self.btn_menu, acciones)
+
+    def _mostrar_menu_flotante(self, ancla, acciones):
+        """Menú contextual con el estilo de la app, anclado bajo `ancla`.
+
+        Sustituye a tkinter.Menu (nativo, feo con el tema oscuro y que no se
+        cerraba al pinchar fuera en Linux). Se cierra al elegir, con Escape o
+        al hacer clic fuera (el grab dirige esos clics aquí).
+        """
+        if getattr(self, "_menu_pop", None) is not None:
+            with contextlib.suppress(Exception):
+                self._menu_pop.destroy()
+
+        pop = ctk.CTkToplevel(self.root)
+        self._menu_pop = pop
+        pop.overrideredirect(True)          # sin barra de título ni bordes del SO
+        pop.transient(self.root)
+        pop.configure(fg_color=BASE_LINE)   # borde fino de 1px
+        marco = ctk.CTkFrame(pop, fg_color=TARJETA, corner_radius=8)
+        marco.pack(padx=1, pady=1, fill="both", expand=True)
+
+        def cerrar():
+            self._menu_pop = None
+            with contextlib.suppress(Exception):
+                pop.grab_release()
+                pop.destroy()
+
+        def elegir(cmd):
+            cerrar()
+            cmd()
+
+        for texto, cmd in acciones:
+            ctk.CTkButton(marco, text=texto, anchor="w", height=32, width=200,
+                          fg_color="transparent", text_color=TEXTO,
+                          hover_color=SEL, corner_radius=6, font=self.f_base,
+                          command=lambda c=cmd: elegir(c)).pack(fill="x", padx=6, pady=3)
+
+        pop.update_idletasks()
+        x = ancla.winfo_rootx() + ancla.winfo_width() - pop.winfo_width()
+        y = ancla.winfo_rooty() + ancla.winfo_height() + 4
+        pop.geometry(f"+{x}+{y}")
+
+        def _quiza_cerrar(ev):
+            px, py = pop.winfo_rootx(), pop.winfo_rooty()
+            pw, ph = pop.winfo_width(), pop.winfo_height()
+            if not (px <= ev.x_root < px + pw and py <= ev.y_root < py + ph):
+                cerrar()
+
+        pop.bind("<Button-1>", _quiza_cerrar, add="+")
+        pop.bind("<Escape>", lambda _e: cerrar())
+        with contextlib.suppress(Exception):
+            pop.grab_set()          # clics fuera se dirigen aquí -> se cierra
+            pop.focus_force()
 
     # --- micrófonos y grabaciones --------------------------------------
     def _refrescar_microfonos(self, reescanear=False):
