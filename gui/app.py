@@ -848,7 +848,7 @@ class App:
         actual = config.cargar()
         dlg = ctk.CTkToplevel(self.root)
         dlg.title("Ajustes")
-        dlg.geometry("460x540")
+        dlg.geometry("460x660")
         dlg.transient(self.root)
         dlg.after(120, dlg.grab_set)
 
@@ -906,6 +906,40 @@ class App:
                                selected_hover_color=TEAL_HOVER).pack(padx=22, pady=(4, 0))
         cont.pack(fill="x")
         render()
+
+        # --- Carpeta de datos ---------------------------------------------
+        ctk.CTkLabel(dlg, text="Carpeta de datos (grabaciones y transcripciones)",
+                     font=self.f_seccion, anchor="w").pack(fill="x", padx=22, pady=(18, 2))
+        lbl_carpeta = ctk.CTkLabel(dlg, text=str(rutas.base_datos()), font=self.f_sub,
+                                   text_color=MUTED, anchor="w", wraplength=410,
+                                   justify="left")
+        lbl_carpeta.pack(fill="x", padx=22)
+
+        def cambiar_carpeta():
+            elegida = filedialog.askdirectory(parent=dlg,
+                                              title="Elige la carpeta de datos de recordIt")
+            if not elegida:
+                return
+            actual["carpeta_datos"] = elegida
+            config.guardar(actual)
+            lbl_carpeta.configure(text=str(rutas.base_datos()))
+            self._refrescar_grabaciones()
+
+        def carpeta_defecto():
+            actual.pop("carpeta_datos", None)
+            config.guardar(actual)
+            lbl_carpeta.configure(text=str(rutas.base_datos()))
+            self._refrescar_grabaciones()
+
+        fila_carpeta = ctk.CTkFrame(dlg, fg_color="transparent")
+        fila_carpeta.pack(fill="x", padx=22, pady=(6, 0))
+        ctk.CTkButton(fila_carpeta, text="Cambiar…", command=cambiar_carpeta,
+                      fg_color=TEAL, hover_color=TEAL_HOVER, font=self.f_base,
+                      width=120).pack(side="left")
+        ctk.CTkButton(fila_carpeta, text="Usar carpeta por defecto",
+                      command=carpeta_defecto, fg_color="transparent", border_width=1,
+                      border_color=MUTED, text_color=MUTED, hover_color=SEL).pack(
+            side="left", padx=8)
 
         ctk.CTkLabel(dlg, text="Tema", font=self.f_base,
                      anchor="w").pack(fill="x", padx=22, pady=(16, 4))
