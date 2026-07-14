@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 
 MODELO_POR_DEFECTO = "claude-opus-4-8"
+PROVEEDOR_POR_DEFECTO = "claude"
+MODELO_OPENAI_POR_DEFECTO = "gpt-5"
 
 
 def _dir_config() -> Path:
@@ -51,6 +53,19 @@ def api_key():
 
 def modelo_acta() -> str:
     return cargar().get("modelo_acta", MODELO_POR_DEFECTO)
+
+
+def proveedor() -> str:
+    """Proveedor de IA para redactar el acta: 'claude' (defecto) u 'openai'."""
+    return cargar().get("proveedor", PROVEEDOR_POR_DEFECTO)
+
+
+def openai_api_key():
+    return cargar().get("openai_api_key") or None
+
+
+def modelo_openai() -> str:
+    return cargar().get("modelo_openai", MODELO_OPENAI_POR_DEFECTO)
 
 
 def microfono():

@@ -5,8 +5,11 @@ Dos backends, según cómo haya conectado recordIt (ver recordit.claude_auth):
 - 'api': usa la API de Anthropic con la API key obtenida del sistema.
 Reutiliza el mismo prompt que el flujo interno (acta.sh).
 """
+import json
 import os
 import subprocess
+import urllib.error
+import urllib.request
 
 import anthropic
 
@@ -15,6 +18,17 @@ from . import claude_auth, glosario
 MAX_TOKENS = 8192
 
 COMANDO_LOGIN = "claude login"
+
+URL_OPENAI = "https://api.openai.com/v1/chat/completions"
+
+# Tope de espera de la llamada a OpenAI (segundos): guarda contra cuelgues, no
+# un SLA ajustado — redactar un acta larga puede tardar.
+TIMEOUT_OPENAI = 300
+
+# Tope de tokens de salida para OpenAI: más holgado que el de Anthropic porque
+# en los modelos de razonamiento (gpt-5) el cupo incluye los tokens de
+# razonamiento, no solo el acta visible.
+MAX_TOKENS_OPENAI = 16384
 
 # Subcadenas del stderr/stdout del CLI que delatan falta de sesión iniciada.
 _PISTAS_LOGIN = ("login", "log in", "authenticat", "not logged in",
@@ -109,13 +123,69 @@ def _redactar_cli(prompt: str) -> str:
     return _limpiar_markdown(res.stdout)
 
 
-def redactar_acta(transcripcion: str, *, fecha: str, base: str, metodo: str = "api",
-                  api_key: str = None, modelo: str = "claude-opus-4-8", titulo=None) -> str:
+def _error_openai(exc) -> RuntimeError:
+    """Traduce un fallo HTTP de OpenAI a un error en español accionable."""
+    if isinstance(exc, urllib.error.HTTPError):
+        if exc.code == 401:
+            return RuntimeError(
+                "La API key de OpenAI no es válida o ha caducado. "
+                "Revísala en «⚙ Ajustes».")
+        try:
+            detalle = exc.read().decode("utf-8", "replace")[:300]
+        except Exception:  # noqa: BLE001
+            detalle = exc.reason
+        return RuntimeError(
+            f"OpenAI falló al redactar el acta (HTTP {exc.code}): {detalle}")
+    return RuntimeError(
+        f"No se pudo conectar con OpenAI: {getattr(exc, 'reason', exc)}")
+
+
+def _redactar_openai(prompt: str, api_key: str, modelo: str) -> str:
+    """Redacta el acta con la API de OpenAI (chat completions) vía urllib.
+
+    Se usa la librería estándar para no añadir el SDK `openai` como dependencia.
+    La familia gpt-5 usa `max_completion_tokens` (no `max_tokens`).
+    """
+    cuerpo = json.dumps({
+        "model": modelo,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_completion_tokens": MAX_TOKENS_OPENAI,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        URL_OPENAI, data=cuerpo, method="POST",
+        headers={"Authorization": f"Bearer {api_key}",
+                 "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_OPENAI) as resp:
+            datos = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as exc:  # cubre también HTTPError
+        raise _error_openai(exc) from exc
+    opciones = datos.get("choices") or []
+    if not opciones:
+        raise RuntimeError(
+            "OpenAI devolvió una respuesta vacía o inesperada al redactar el acta.")
+    if opciones[0].get("finish_reason") == "length":
+        raise RuntimeError(
+            "OpenAI cortó el acta por longitud. Prueba con una transcripción más "
+            "corta o con otro modelo.")
+    contenido = (opciones[0].get("message") or {}).get("content")
+    if not contenido:
+        raise RuntimeError(
+            "OpenAI devolvió una respuesta vacía o inesperada al redactar el acta.")
+    return _limpiar_markdown(contenido)
+
+
+def redactar_acta(transcripcion: str, *, fecha: str, base: str, proveedor: str = "claude",
+                  metodo: str = "api", api_key: str = None,
+                  modelo: str = "claude-opus-4-8", titulo=None) -> str:
     """Redacta el acta y devuelve el Markdown.
 
-    metodo: 'cli' usa el ejecutable `claude`; 'api' usa la API con `api_key`.
+    proveedor: 'claude' (defecto) usa Claude (metodo 'cli' o 'api'); 'openai' usa
+    la API de OpenAI con `api_key` y `modelo`.
     """
     prompt = construir_prompt(transcripcion, fecha=fecha, base=base, titulo=titulo)
+    if proveedor == "openai":
+        return _redactar_openai(prompt, api_key, modelo)
     if metodo == "cli":
         return _redactar_cli(prompt)
     return _redactar_api(prompt, api_key, modelo)

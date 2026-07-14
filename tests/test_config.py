@@ -27,3 +27,21 @@ def test_microfono_persiste(monkeypatch, tmp_path):
     config.guardar_microfono("Otro mic")
     assert config.modelo_acta() == "claude-sonnet-4-6"
     assert config.microfono() == "Otro mic"
+
+
+def test_proveedor_defecto_es_claude(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    assert config.proveedor() == "claude"
+    assert config.openai_api_key() is None
+    assert config.modelo_openai() == "gpt-5"
+
+
+def test_config_openai_roundtrip(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    config.guardar({"proveedor": "openai", "openai_api_key": "sk-oa",
+                    "modelo_openai": "gpt-5-mini"})
+    assert config.proveedor() == "openai"
+    assert config.openai_api_key() == "sk-oa"
+    assert config.modelo_openai() == "gpt-5-mini"

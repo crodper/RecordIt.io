@@ -1,4 +1,6 @@
+import json
 import subprocess
+import urllib.error
 from types import SimpleNamespace
 
 from recordit import acta
@@ -104,3 +106,145 @@ def test_redactar_cli_error_generico_propaga_stderr(monkeypatch):
     except RuntimeError as exc:
         assert "kaboom interno del cli" in str(exc)
         assert "claude login" not in str(exc)
+
+
+def test_redactar_acta_openai_mockeado(monkeypatch):
+    capturado = {}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {"choices": [{"message": {"content": "---\ntitle: A\n---\nok"}}]}
+            ).encode("utf-8")
+
+    def _urlopen_fake(req, *a, **k):
+        capturado["url"] = req.full_url
+        capturado["auth"] = req.headers.get("Authorization")
+        capturado["body"] = json.loads(req.data.decode("utf-8"))
+        return _Resp()
+
+    monkeypatch.setattr(acta.urllib.request, "urlopen", _urlopen_fake)
+    md = acta.redactar_acta("transcripcion-openai", fecha="16 de junio de 2026",
+                            base="reunion_x", proveedor="openai",
+                            api_key="sk-oa", modelo="gpt-5")
+    assert md.startswith("---")
+    assert "```" not in md
+    assert capturado["url"] == acta.URL_OPENAI
+    assert capturado["auth"] == "Bearer sk-oa"
+    assert capturado["body"]["model"] == "gpt-5"
+    assert capturado["body"]["max_completion_tokens"] == acta.MAX_TOKENS_OPENAI
+    assert "transcripcion-openai" in capturado["body"]["messages"][0]["content"]
+
+
+def test_redactar_openai_401_da_mensaje_accionable(monkeypatch):
+    def _urlopen_fake(req, *a, **k):
+        raise urllib.error.HTTPError(req.full_url, 401, "Unauthorized", {}, None)
+
+    monkeypatch.setattr(acta.urllib.request, "urlopen", _urlopen_fake)
+    try:
+        acta.redactar_acta("t", fecha="16 de junio de 2026", base="r",
+                           proveedor="openai", api_key="mala", modelo="gpt-5")
+        assert False, "debería haber lanzado RuntimeError"
+    except RuntimeError as exc:
+        assert "OpenAI" in str(exc)
+        assert "Ajustes" in str(exc)
+
+
+def test_redactar_openai_respuesta_vacia_da_error(monkeypatch):
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": []}).encode("utf-8")
+
+    monkeypatch.setattr(acta.urllib.request, "urlopen", lambda req, *a, **k: _Resp())
+    try:
+        acta.redactar_acta("t", fecha="16 de junio de 2026", base="r",
+                           proveedor="openai", api_key="sk-oa", modelo="gpt-5")
+        assert False, "debería haber lanzado RuntimeError"
+    except RuntimeError as exc:
+        assert "vacía o inesperada" in str(exc)
+
+
+def test_redactar_openai_truncada_da_error(monkeypatch):
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {"choices": [{"finish_reason": "length",
+                              "message": {"content": "x"}}]}
+            ).encode("utf-8")
+
+    monkeypatch.setattr(acta.urllib.request, "urlopen", lambda req, *a, **k: _Resp())
+    try:
+        acta.redactar_acta("t", fecha="16 de junio de 2026", base="r",
+                           proveedor="openai", api_key="sk-oa", modelo="gpt-5")
+        assert False, "debería haber lanzado RuntimeError"
+    except RuntimeError as exc:
+        assert "por longitud" in str(exc)
+
+
+def test_error_openai_http_no_401(monkeypatch):
+    def _urlopen_fake(req, *a, **k):
+        raise urllib.error.HTTPError(req.full_url, 500, "Server Error", {}, None)
+
+    monkeypatch.setattr(acta.urllib.request, "urlopen", _urlopen_fake)
+    try:
+        acta.redactar_acta("t", fecha="16 de junio de 2026", base="r",
+                           proveedor="openai", api_key="sk-oa", modelo="gpt-5")
+        assert False, "debería haber lanzado RuntimeError"
+    except RuntimeError as exc:
+        assert "500" in str(exc)
+
+
+def test_error_openai_conexion(monkeypatch):
+    def _urlopen_fake(req, *a, **k):
+        raise urllib.error.URLError("boom")
+
+    monkeypatch.setattr(acta.urllib.request, "urlopen", _urlopen_fake)
+    try:
+        acta.redactar_acta("t", fecha="16 de junio de 2026", base="r",
+                           proveedor="openai", api_key="sk-oa", modelo="gpt-5")
+        assert False, "debería haber lanzado RuntimeError"
+    except RuntimeError as exc:
+        assert "No se pudo conectar con OpenAI" in str(exc)
+
+
+def test_redactar_openai_pasa_timeout(monkeypatch):
+    capturado = {}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {"choices": [{"message": {"content": "---\ntitle: A\n---\nok"}}]}
+            ).encode("utf-8")
+
+    def _urlopen_fake(req, *a, **k):
+        capturado["timeout"] = k.get("timeout")
+        return _Resp()
+
+    monkeypatch.setattr(acta.urllib.request, "urlopen", _urlopen_fake)
+    acta.redactar_acta("t", fecha="16 de junio de 2026", base="r",
+                       proveedor="openai", api_key="sk-oa", modelo="gpt-5")
+    assert capturado["timeout"] == acta.TIMEOUT_OPENAI
