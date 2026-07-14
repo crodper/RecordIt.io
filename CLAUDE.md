@@ -82,6 +82,10 @@ necesita. La plantilla requiere `npm install` una vez dentro de `pdf-template/`.
   la **API de Anthropic** (no el CLI `claude`) y es opcional; el PDF de la GUI se genera en
   Python puro (`recordit/pdf.py`, reportlab), sin Node (`acta.sh` sigue usando la plantilla
   Puppeteer para el flujo de línea de comandos).
+- **Selector de proveedor de IA en la GUI**: el acta admite **dos proveedores**, Claude
+  (por defecto) u OpenAI; OpenAI se autentica pegando la API key en «⚙ Ajustes» y se llama
+  con `urllib` de la librería estándar (sin SDK `openai` ni dependencia nueva), con modelos
+  `gpt-5`/`gpt-5-mini`. `acta.sh` (flujo interno) sigue usando únicamente el CLI de Claude.
 
 ## Al generar un acta
 
