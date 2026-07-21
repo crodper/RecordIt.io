@@ -10,6 +10,11 @@ sueltos que se ejecutan a mano.
 
 Flujo: `grabar_reunion.py → grabaciones/reunion_*.wav → transcribir.py → transcripciones/<base>/transcripcion.txt → transcripciones/<base>/acta.md`
 
+Para **reuniones online** hay un modo (interruptor en la GUI, flag `--reunion-online`
+en la CLI) que además del micrófono captura el **audio de salida del sistema**
+(fuentes `*.monitor` en Linux, WASAPI loopback en Windows) y lo mezcla en el mismo
+mono. La salida se auto-detecta; si no la hay, graba solo micro.
+
 ## Estructura
 
 ```
