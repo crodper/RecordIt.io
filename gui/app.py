@@ -336,7 +336,7 @@ class App:
         t = ctk.CTkFrame(master, fg_color=TARJETA, corner_radius=18)
         t.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         t.grid_columnconfigure(0, weight=1)
-        t.grid_rowconfigure(2, weight=1)
+        t.grid_rowconfigure(3, weight=1)
 
         fila_mic = ctk.CTkFrame(t, fg_color="transparent")
         fila_mic.grid(row=0, column=0, sticky="we", padx=18, pady=(18, 6))
@@ -365,18 +365,26 @@ class App:
             width=200, selected_color=TEAL, selected_hover_color=TEAL_HOVER,
             font=self.f_sub).pack(side="left")
 
+        fila_online = ctk.CTkFrame(t, fg_color="transparent")
+        fila_online.grid(row=2, column=0, sticky="w", padx=18, pady=(0, 6))
+        self.var_reunion_online = ctk.BooleanVar(value=config.reunion_online())
+        ctk.CTkSwitch(
+            fila_online, text="Reunión online (captura el audio del sistema)",
+            variable=self.var_reunion_online, command=self._on_reunion_online,
+            progress_color=TEAL, font=self.f_sub).pack(side="left")
+
         self.canvas_onda = Canvas(t, highlightthickness=0, bd=0, bg=_col(CANVAS_BG))
-        self.canvas_onda.grid(row=2, column=0, sticky="nsew", padx=18, pady=8)
+        self.canvas_onda.grid(row=3, column=0, sticky="nsew", padx=18, pady=8)
         self.canvas_onda.bind("<Configure>", lambda e: self._dibujar_onda())
 
         self.lbl_tiempo = ctk.CTkLabel(t, text="00:00", font=self.f_timer, text_color=TEXTO)
-        self.lbl_tiempo.grid(row=3, column=0, pady=(0, 4))
+        self.lbl_tiempo.grid(row=4, column=0, pady=(0, 4))
         self.btn_rec = ctk.CTkButton(
             t, text="●", width=88, height=88, corner_radius=44, command=self._toggle_grabar,
             fg_color=CORAL, hover_color=CORAL_HOVER, text_color="#ffffff", font=self.f_boton)
-        self.btn_rec.grid(row=4, column=0, pady=(0, 4))
+        self.btn_rec.grid(row=5, column=0, pady=(0, 4))
         self.lbl_rec = ctk.CTkLabel(t, text="Grabar", font=self.f_base, text_color=MUTED)
-        self.lbl_rec.grid(row=5, column=0, pady=(0, 18))
+        self.lbl_rec.grid(row=6, column=0, pady=(0, 18))
 
     def _construir_panel_biblioteca(self, master):
         t = ctk.CTkFrame(master, fg_color=TARJETA, corner_radius=18)
@@ -606,6 +614,9 @@ class App:
         if nombre:
             config.guardar_microfono(nombre)
 
+    def _on_reunion_online(self):
+        config.guardar_reunion_online(self.var_reunion_online.get())
+
     def _dispositivo_actual(self):
         return self._mic_idx.get(self.var_mic.get())
 
@@ -669,12 +680,22 @@ class App:
 
         ganancia = {"Auto": None, "Off": 1.0}.get(self.var_ganancia.get(), 3.0)
         dispositivo = self._dispositivo_actual()
+        fuente_salida, salida_loopback = None, False
+        aviso_online = ""
+        if self.var_reunion_online.get():
+            deteccion = audio.salida_sistema_por_defecto()
+            if deteccion is None:
+                aviso_online = " · sin audio del sistema: solo micrófono"
+            else:
+                fuente_salida, salida_loopback = deteccion
         base = rutas.base_desde_audio(salida)
         frecuencia = audio.frecuencia_soportada(dispositivo, 44100, 1)
         vivo = transcripcion_vivo.crear(base, frecuencia)
         if vivo:
             self.lbl_estado.configure(
                 text=f"Grabando en {salida.name}… (transcribiendo en 2º plano)")
+        if aviso_online:
+            self.lbl_estado.configure(text=self.lbl_estado.cget("text") + aviso_online)
 
         def trabajo():
             def nivel(pico_db, ganancia_db):
@@ -682,7 +703,8 @@ class App:
             try:
                 audio.grabar(salida, evento_parada=self.evento_parada, nivel_callback=nivel,
                              dispositivo=dispositivo, ganancia=ganancia,
-                             muestras_callback=vivo.alimentar if vivo else None)
+                             muestras_callback=vivo.alimentar if vivo else None,
+                             fuente_salida=fuente_salida, salida_loopback=salida_loopback)
                 if vivo:
                     self.cola.put(("estado", "Grabación guardada. Terminando transcripción…"))
                     self.cola.put(("fin_grabacion_vivo", str(salida), vivo.finalizar()))
