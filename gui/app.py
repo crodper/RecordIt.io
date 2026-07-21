@@ -1258,7 +1258,9 @@ class App:
 
         if hubo_nivel:
             self._dibujar_onda()
-        if self.grabando and self.inicio_grabacion:
+        # El reloj se congela en cuanto se pide parar (evento_parada.set()); no
+        # espera a que el hilo finalice la transcripción en vivo, que puede tardar.
+        if self.grabando and self.inicio_grabacion and not self.evento_parada.is_set():
             t = int(time.time() - self.inicio_grabacion)
             self.lbl_tiempo.configure(text=f"{t // 60:02d}:{t % 60:02d}")
         self.root.after(50, self._drenar_cola)
