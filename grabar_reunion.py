@@ -57,6 +57,9 @@ def main() -> None:
     parser.add_argument("--transcribir", action="store_true",
                         help="transcribe en segundo plano mientras graba "
                              "(la transcripción queda lista al parar)")
+    parser.add_argument("--reunion-online", action="store_true",
+                        help="captura también el audio del sistema (reuniones "
+                             "online) y lo mezcla con el micrófono")
     args = parser.parse_args()
 
     if args.listar:
@@ -65,6 +68,15 @@ def main() -> None:
 
     salida = args.salida or str(rutas.dir_grabaciones() / audio.nombre_archivo())
     evento = threading.Event()
+
+    fuente_salida, salida_loopback = None, False
+    if args.reunion_online:
+        deteccion = audio.salida_sistema_por_defecto()
+        if deteccion is None:
+            print("Aviso: no encontré la salida del sistema; grabo solo el micrófono.")
+        else:
+            fuente_salida, salida_loopback = deteccion
+            print("Modo reunión online: mezclando micrófono + audio del sistema.")
 
     vivo = None
     if args.transcribir:
@@ -92,6 +104,7 @@ def main() -> None:
             dispositivo=args.dispositivo, duracion_max=args.duracion,
             ganancia=parse_ganancia(args.ganancia),
             muestras_callback=vivo.alimentar if vivo else None,
+            fuente_salida=fuente_salida, salida_loopback=salida_loopback,
         )
     except KeyboardInterrupt:
         evento.set()

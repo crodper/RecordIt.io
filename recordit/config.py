@@ -90,3 +90,14 @@ def guardar_microfono(nombre: str) -> None:
     datos = cargar()
     datos["microfono"] = nombre
     guardar(datos)
+
+
+def reunion_online() -> bool:
+    """Si el último modo usado capturaba también el audio del sistema."""
+    return bool(cargar().get("reunion_online", False))
+
+
+def guardar_reunion_online(activo: bool) -> None:
+    datos = cargar()
+    datos["reunion_online"] = bool(activo)
+    guardar(datos)
