@@ -45,3 +45,24 @@ def test_sin_flag_no_hay_transcripcion_en_vivo(monkeypatch, tmp_path):
                                       "-o", str(tmp_path / "reunion_t.wav")])
     grabar_reunion.main()
     assert capturado["muestras_callback"] is None
+
+
+def test_reunion_online_pasa_la_salida_detectada(monkeypatch, tmp_path):
+    import grabar_reunion
+    from recordit import audio, rutas
+
+    monkeypatch.setattr(rutas, "dir_grabaciones", lambda: tmp_path)
+    monkeypatch.setattr(audio, "frecuencia_soportada", lambda d, f, c: 16000)
+    monkeypatch.setattr(audio, "salida_sistema_por_defecto", lambda: (5, False))
+    monkeypatch.setattr("sys.argv", ["grabar_reunion.py", "--reunion-online",
+                                     "-d", "0"])
+    capturado = {}
+
+    def fake_grabar(salida, **kwargs):
+        capturado.update(kwargs)
+        return 1.0
+
+    monkeypatch.setattr(audio, "grabar", fake_grabar)
+    grabar_reunion.main()
+    assert capturado["fuente_salida"] == 5
+    assert capturado["salida_loopback"] is False
