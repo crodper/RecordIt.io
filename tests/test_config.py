@@ -45,6 +45,19 @@ def test_microfono_persiste(monkeypatch, tmp_path):
     assert config.microfono() == "Otro mic"
 
 
+def test_reunion_online_defecto_y_persiste(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    assert config.reunion_online() is False
+    config.guardar_reunion_online(True)
+    assert config.reunion_online() is True
+    # No pisa otras claves.
+    config.guardar_microfono("Mic X")
+    config.guardar_reunion_online(False)
+    assert config.reunion_online() is False
+    assert config.microfono() == "Mic X"
+
+
 def test_proveedor_defecto_es_claude(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.setenv("APPDATA", str(tmp_path))
