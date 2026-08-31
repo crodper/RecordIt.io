@@ -166,8 +166,17 @@ La app distribuida **no** usa la app de escritorio de Claude (no expone interfaz
 a terceros) ni una API key. Para redactar actas, cada equipo necesita el **CLI
 oficial de Claude Code** autenticado con la suscripción del usuario:
 
-1. `npm install -g @anthropic-ai/claude-code` (requiere Node.js).
-2. `claude login` — con la **misma cuenta** que la app de escritorio de Claude.
+1. En «⚙ Ajustes» → «Conectar con Claude» → **«Instalar Claude Code»**: recordIt
+   ejecuta el instalador nativo oficial (`irm https://claude.ai/install.ps1 | iex`),
+   que **no requiere Node.js** ni permisos de administrador.
+2. Al terminar, recordIt abre una terminal con `claude auth login`: inicia sesión ahí con la
+   **misma cuenta** que la app de escritorio de Claude (el navegador completa el OAuth).
+3. recordIt detecta la sesión solo y cierra la ventana.
 
-Tras eso, recordIt detecta `claude` automáticamente (queda en `%APPDATA%\npm`,
-ya en el PATH). La propia app guía estos pasos en «Ajustes → Conectar con Claude».
+El instalador nativo deja el CLI en `%USERPROFILE%\.local\bin\claude.exe`, ruta que
+recordIt comprueba aunque el `PATH` del proceso ya en marcha no la incluya: no hace
+falta reiniciar la app.
+
+Si prefieres hacerlo a mano, los mismos pasos son: ejecutar
+`irm https://claude.ai/install.ps1 | iex` en PowerShell y después `claude auth login`.
+Guía oficial: <https://code.claude.com/docs/es/setup#native-install-recommended>
