@@ -198,6 +198,33 @@ def test_abrir_login_gnome_terminal_usa_doble_guion(monkeypatch):
                              "auth", "login"]
 
 
+def test_abrir_login_macos_abre_terminal_con_osascript(monkeypatch):
+    # En macOS no hay gnome-terminal/konsole: se le pide a Terminal.app que
+    # ejecute el login con AppleScript.
+    monkeypatch.setattr(claude_auth.os, "name", "posix")
+    monkeypatch.setattr(claude_auth.sys, "platform", "darwin")
+    monkeypatch.setattr(claude_auth, "ruta_cli", lambda: "/Users/u/.local/bin/claude")
+    visto = _capturar_popen(monkeypatch)
+    assert claude_auth.abrir_login() is True
+    argv = visto["argv"]
+    assert argv[0] == "osascript"
+    assert argv[2] == ('tell application "Terminal" to do script '
+                       '"/Users/u/.local/bin/claude auth login"')
+    assert "activate" in argv[-1]
+
+
+def test_abrir_login_macos_entrecomilla_rutas_con_espacios(monkeypatch):
+    monkeypatch.setattr(claude_auth.os, "name", "posix")
+    monkeypatch.setattr(claude_auth.sys, "platform", "darwin")
+    monkeypatch.setattr(claude_auth, "ruta_cli",
+                        lambda: "/Users/u/Application Support/claude")
+    visto = _capturar_popen(monkeypatch)
+    assert claude_auth.abrir_login() is True
+    # La ruta va entrecomillada para el shell: sin esto, Terminal partiría el
+    # comando en el espacio y el login no arrancaría.
+    assert "'/Users/u/Application Support/claude' auth login" in visto["argv"][2]
+
+
 def test_abrir_login_linux_sin_terminal_devuelve_false(monkeypatch):
     monkeypatch.setattr(claude_auth.os, "name", "posix")
     monkeypatch.setattr(claude_auth, "ruta_cli", lambda: "/home/u/.local/bin/claude")

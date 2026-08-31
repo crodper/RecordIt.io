@@ -13,8 +13,10 @@ Método persistido en config:
   {"metodo": "api", "api_key": "sk-..."} → usa la API
 """
 import os
+import shlex
 import shutil
 import subprocess
+import sys
 
 from . import config
 
@@ -90,13 +92,25 @@ def abrir_login() -> bool:
     El OAuth del CLI necesita una terminal interactiva (pide confirmación y
     abre el navegador), así que no vale con lanzarlo sin consola. Devuelve
     False si no hay CLI instalado, no se encuentra terminal o falla el
-    lanzamiento; en ese caso la GUI muestra el paso manual.
+    lanzamiento; en ese caso la GUI muestra el paso manual. En macOS la
+    terminal se abre con AppleScript (`osascript` + Terminal.app).
     """
     exe = ruta_cli()
     if not exe:
         return False
     if os.name == "nt":
         argv = ["cmd", "/c", "start", "", "cmd", "/k", exe, "auth", "login"]
+    elif sys.platform == "darwin":
+        # En macOS no hay emuladores de terminal en el PATH: se le pide a
+        # Terminal.app que ejecute el login. `do script` recibe una orden de
+        # shell, así que la ruta se entrecomilla con shlex (los Mac tienen
+        # carpetas con espacios). El literal AppleScript va entre comillas
+        # dobles, escapando las que pueda traer la ruta.
+        orden = f"{shlex.quote(exe)} auth login"
+        literal = '"' + orden.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        argv = ["osascript",
+                "-e", f"tell application \"Terminal\" to do script {literal}",
+                "-e", 'tell application "Terminal" to activate']
     else:
         terminal = next((t for t in TERMINALES if shutil.which(t)), None)
         if not terminal:
