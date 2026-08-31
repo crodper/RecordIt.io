@@ -92,7 +92,8 @@ def test_redactar_cli_sin_login_da_mensaje_accionable(monkeypatch):
         acta.redactar_acta("t", fecha="16 de junio de 2026", base="r", metodo="cli")
         assert False, "debería haber lanzado RuntimeError"
     except RuntimeError as exc:
-        assert "claude login" in str(exc)
+        assert "sin sesión iniciada" in str(exc)
+        assert "claude auth login" in str(exc)
 
 
 def test_redactar_cli_error_generico_propaga_stderr(monkeypatch):
@@ -105,7 +106,7 @@ def test_redactar_cli_error_generico_propaga_stderr(monkeypatch):
         assert False, "debería haber lanzado RuntimeError"
     except RuntimeError as exc:
         assert "kaboom interno del cli" in str(exc)
-        assert "claude login" not in str(exc)
+        assert "sin sesión iniciada" not in str(exc)
 
 
 def test_redactar_acta_openai_mockeado(monkeypatch):

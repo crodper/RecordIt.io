@@ -20,7 +20,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
-from tkinter import Canvas, StringVar, filedialog, messagebox
+from tkinter import Canvas, StringVar, TclError, filedialog, messagebox
 
 import customtkinter as ctk
 
@@ -46,6 +46,10 @@ CORAL = "#ef5f4c"
 CORAL_HOVER = "#d94f3d"
 VERDE = "#3ba55d"
 AMBAR = "#e0a83e"  # transcripción en curso (dot ◐)
+
+# Sondeo de la sesión de Claude: 150 intentos × ~2,2-2,5 s (200 ms del propio
+# sondeo + 2000 ms de espera + el subproceso) ≈ 6 minutos de espera.
+INTENTOS_SESION = 150
 
 # glifo y color del punto de estado por cada estado de rutas.estado_reunion
 _PUNTO_ESTADO = {
@@ -210,6 +214,9 @@ class App:
         self._mic_idx = {}
         self._info_actualizacion = None  # dict de la nueva versión, si la hay
         self.niveles = collections.deque(maxlen=400)
+        # «Claude conectado» significa que hay sesión, no solo binario; hasta que
+        # la verificación de fondo responda, se asume que sí para no parpadear.
+        self.sesion_claude = True
 
         self.f_marca = ctk.CTkFont(size=22, weight="bold")
         self.f_seccion = ctk.CTkFont(size=15, weight="bold")
@@ -227,6 +234,7 @@ class App:
         if not claude_auth.conectado():
             claude_auth.conectar()
         self._actualizar_estado_acta()
+        threading.Thread(target=self._verificar_sesion_claude, daemon=True).start()
         # Comprobación de nueva versión al arrancar (en segundo plano, silenciosa).
         threading.Thread(target=self._buscar_actualizacion, daemon=True).start()
         self.root.after(60, self._dibujar_onda)
@@ -483,6 +491,8 @@ class App:
             key = config.openai_api_key()
             return ("openai", "api" if key else None, key, config.modelo_openai())
         metodo, key = claude_auth.estado()
+        if metodo == "cli" and not self.sesion_claude:
+            metodo = None  # hay binario, pero sin sesión no se puede redactar
         return ("claude", metodo, key, config.modelo_acta())
 
     def _ia_conectada(self) -> bool:
@@ -496,6 +506,19 @@ class App:
         else:
             self.lbl_conexion.configure(text="● Sin conexión", text_color=MUTED)
         self._actualizar_accion_primaria()
+
+    def _verificar_sesion_claude(self):
+        """Comprueba en segundo plano si el CLI tiene sesión (0,3 s de subproceso).
+
+        Sin esto la app anuncia «Claude conectado» con solo tener el binario y
+        luego falla al generar el acta. Si el proveedor configurado es OpenAI,
+        Claude ni se usa: lanzar el subproceso en cada arranque sería un coste
+        para nadie.
+        """
+        if config.proveedor() != "claude":
+            return
+        hay = claude_auth.estado()[0] != "cli" or claude_auth.sesion_iniciada()
+        self.cola.put(("sesion_claude", hay))
 
     def _seleccion(self):
         return self.nombre_sel
@@ -950,46 +973,198 @@ class App:
             return "✓ Conectado mediante la API de Anthropic"
         return "○ Sin conectar"
 
-    def _mostrar_guia_claude(self, parent):
-        """Diálogo con los pasos para instalar y autenticar el CLI `claude`."""
-        comando = claude_auth.COMANDO_INSTALACION
-        if os.name == "nt":
-            pasos = (
-                "Para generar actas, recordIt necesita el CLI de Claude Code\n"
-                "(la app de escritorio de Claude no basta). Pasos:\n\n"
-                f"1. Instálalo (necesitas Node.js):\n     {comando}\n\n"
-                "2. Inicia sesión con la MISMA cuenta que tu app de Claude:\n"
-                "     claude login\n\n"
-                "3. Reabre recordIt (o pulsa «Conectar con Claude» de nuevo)."
-            )
-        else:
-            pasos = (
-                "Para generar actas, recordIt necesita el CLI de Claude Code.\n\n"
-                f"1. Instálalo:\n     {comando}\n\n"
-                "2. Inicia sesión:\n     claude login\n\n"
-                "3. Pulsa «Conectar con Claude» de nuevo."
-            )
+    def _mostrar_guia_claude(self, parent, al_conectar=None):
+        """Conecta con Claude sin pasos manuales.
+
+        Instala el CLI si falta, abre el inicio de sesión si falta sesión y
+        espera a que la haya, sondeando. Lo único que no se puede automatizar es
+        aprobar el acceso en el navegador.
+        """
+        comando = claude_auth.comando_instalacion()
 
         dlg = ctk.CTkToplevel(parent)
         dlg.title("Conectar con Claude")
         dlg.transient(parent)
         dlg.after(120, dlg.grab_set)
-        ctk.CTkLabel(dlg, text=pasos, font=self.f_base, justify="left",
-                     anchor="w").pack(fill="x", padx=22, pady=(22, 8))
+
+        texto = ctk.CTkLabel(dlg, text="", font=self.f_base, justify="left",
+                             anchor="w", wraplength=480)
+        texto.pack(fill="x", padx=22, pady=(22, 8))
+        botones = ctk.CTkFrame(dlg, fg_color="transparent")
+        botones.pack(fill="x", padx=22, pady=(0, 20))
+
+        def vivo():
+            """El usuario puede cerrar la ventana en cualquier momento."""
+            return bool(dlg.winfo_exists())
+
+        generacion = [0]
+
+        def nueva_generacion():
+            """Marca como caducado cualquier bucle de sondeo anterior.
+
+            Cada vez que el asistente cambia de paso (empieza a instalar o
+            reinicia la espera de sesión) se pide una generación nueva; los
+            bucles de una generación anterior se retiran sin tocar nada en
+            cuanto la detectan.
+            """
+            generacion[0] += 1
+            return generacion[0]
+
+        def limpiar():
+            for w in botones.winfo_children():
+                w.destroy()
 
         def copiar():
             self.root.clipboard_clear()
             self.root.clipboard_append(comando)
 
-        botones = ctk.CTkFrame(dlg, fg_color="transparent")
-        botones.pack(fill="x", padx=22, pady=(0, 20))
-        ctk.CTkButton(botones, text="Copiar comando", command=copiar,
-                      fg_color=TEAL, hover_color=TEAL_HOVER).pack(side="left")
-        ctk.CTkButton(botones, text="Abrir guía",
-                      command=lambda: self._abrir_url(claude_auth.URL_AYUDA),
-                      fg_color="transparent", border_width=1).pack(side="left", padx=8)
-        ctk.CTkButton(botones, text="Cerrar", command=dlg.destroy,
-                      fg_color="transparent").pack(side="right")
+        def en_hilo(funcion, al_terminar):
+            """Ejecuta `funcion` fuera del hilo de la interfaz y entrega su
+            resultado a `al_terminar` ya en el hilo de Tk."""
+            resultados = queue.Queue()
+            threading.Thread(target=lambda: resultados.put(funcion()),
+                             daemon=True).start()
+
+            def revisar():
+                if not vivo():
+                    return
+                try:
+                    resultado = resultados.get_nowait()
+                except queue.Empty:
+                    dlg.after(200, revisar)
+                    return
+                al_terminar(resultado)
+
+            dlg.after(200, revisar)
+
+        def paso_instalar(aviso=""):
+            nueva_generacion()  # invalida el sondeo de sesión que estuviera en curso
+            texto.configure(text=(
+                f"{aviso}Para generar actas, recordIt necesita el CLI de Claude Code\n"
+                "(la app de escritorio de Claude no basta).\n\n"
+                "Puedo instalarlo por ti con el instalador oficial. Se ejecutará:\n"
+                f"     {comando}\n\n"
+                "No necesita Node.js ni permisos de administrador."))
+            limpiar()
+            ctk.CTkButton(botones, text="Instalar Claude Code", command=instalar,
+                          fg_color=TEAL, hover_color=TEAL_HOVER).pack(side="left")
+            ctk.CTkButton(botones, text="Copiar comando", command=copiar,
+                          fg_color="transparent", border_width=1).pack(side="left", padx=8)
+            ctk.CTkButton(botones, text="Abrir guía",
+                          command=lambda: self._abrir_url(claude_auth.URL_AYUDA),
+                          fg_color="transparent", border_width=1).pack(side="left")
+            ctk.CTkButton(botones, text="Cerrar", command=dlg.destroy,
+                          fg_color="transparent").pack(side="right")
+
+        def instalar():
+            texto.configure(text="Descargando e instalando Claude Code…\n\n"
+                                 "Puede tardar un par de minutos.")
+            limpiar()
+            ctk.CTkButton(botones, text="Cerrar", command=dlg.destroy,
+                          fg_color="transparent").pack(side="right")
+            en_hilo(claude_auth.instalar, tras_instalar)
+
+        def tras_instalar(resultado):
+            ok, salida = resultado
+            if not ok:
+                detalle = (salida or "sin detalle").strip()[-400:]
+                paso_instalar(aviso=f"No se pudo instalar:\n{detalle}\n\n")
+            elif not claude_auth.conectar()[0]:
+                detalle = (salida or "sin detalle").strip()[-400:]
+                paso_instalar(aviso=(
+                    "Claude Code se instaló, pero recordIt todavía no lo encuentra.\n"
+                    "Cierra y vuelve a abrir recordIt, o instálalo a mano:\n\n"
+                    f"{detalle}\n\n"))
+            else:
+                paso_login()
+
+        def paso_login():
+            gen = nueva_generacion()
+            abierta = claude_auth.abrir_login()
+            texto.configure(text=(
+                "Claude Code listo.\n\n"
+                "Se ha abierto una terminal: inicia sesión ahí con la cuenta de tu\n"
+                "suscripción (se abrirá el navegador).\n\n"
+                "recordIt lo detectará solo y esta ventana se cerrará."
+                if abierta else
+                "Claude Code listo, pero falta iniciar sesión.\n\n"
+                "Abre una terminal y ejecuta «claude auth login» con la cuenta de\n"
+                "tu suscripción.\n\n"
+                "recordIt lo detectará solo y esta ventana se cerrará."))
+            limpiar()
+            ctk.CTkButton(botones, text="Instalar o actualizar Claude Code",
+                          command=lambda: paso_instalar(),
+                          fg_color="transparent", border_width=1).pack(side="left")
+            ctk.CTkButton(botones, text="Cerrar", command=dlg.destroy,
+                          fg_color="transparent").pack(side="right")
+            esperar_sesion(0, gen)
+
+        def esperar_sesion(intentos, gen):
+            if not vivo() or gen != generacion[0]:
+                # Un paso posterior (instalar, reiniciar la espera) ha dejado
+                # caduco este bucle: se retira sin reprogramarse ni tocar nada.
+                return
+            if intentos >= INTENTOS_SESION:
+                paso_sesion_pendiente(gen)
+                return
+
+            def al_terminar(hay):
+                if gen != generacion[0]:
+                    return
+                if hay:
+                    ya_conectado()
+                else:
+                    dlg.after(2000, lambda: esperar_sesion(intentos + 1, gen))
+
+            en_hilo(claude_auth.sesion_iniciada, al_terminar)
+
+        def ya_conectado():
+            claude_auth.conectar()
+            self.sesion_claude = True
+            if al_conectar:
+                # Refrescar la ventana ajena (p. ej. Ajustes) es accesorio: si ya
+                # se cerró o cambió de sección, el widget puede no existir. Que
+                # falle no debe impedir cerrar este asistente ni actualizar el
+                # estado global, que sí son imprescindibles.
+                try:
+                    al_conectar()
+                except TclError:
+                    pass
+            self._actualizar_estado_acta()
+            if vivo():
+                dlg.destroy()
+
+        def comprobar_de_nuevo():
+            gen = nueva_generacion()
+            texto.configure(text="Comprobando…")
+            limpiar()
+            ctk.CTkButton(botones, text="Cerrar", command=dlg.destroy,
+                          fg_color="transparent").pack(side="right")
+            esperar_sesion(0, gen)
+
+        def paso_sesion_pendiente(gen):
+            if gen != generacion[0]:
+                return
+            self.sesion_claude = False
+            self._actualizar_estado_acta()
+            texto.configure(text=(
+                "Sigo sin detectar la sesión.\n\n"
+                "Abre una terminal y ejecuta «claude auth login» con la cuenta de\n"
+                "tu suscripción; luego pulsa «Comprobar de nuevo»."))
+            limpiar()
+            ctk.CTkButton(botones, text="Comprobar de nuevo",
+                          command=comprobar_de_nuevo,
+                          fg_color=TEAL, hover_color=TEAL_HOVER).pack(side="left")
+            ctk.CTkButton(botones, text="Instalar o actualizar Claude Code",
+                          command=lambda: paso_instalar(),
+                          fg_color="transparent", border_width=1).pack(side="left", padx=8)
+            ctk.CTkButton(botones, text="Cerrar", command=dlg.destroy,
+                          fg_color="transparent").pack(side="right")
+
+        if claude_auth.ruta_cli():
+            paso_login()
+        else:
+            paso_instalar()
 
     def _on_ajustes(self):
         actual = config.cargar()
@@ -1031,13 +1206,50 @@ class App:
                                           font=self.f_base, anchor="w", text_color=MUTED)
                 lbl_estado.pack(fill="x", padx=22, pady=(16, 0))
 
+                def marcar_sesion(hay):
+                    self.sesion_claude = hay
+                    self._actualizar_estado_acta()
+                    # lbl_estado es hijo de cont: si el usuario cambió de
+                    # proveedor mientras la comprobación estaba en vuelo,
+                    # render() ya lo destruyó. Refrescarlo es accesorio; fijar
+                    # el flag y abrir el asistente (si falta sesión) no.
+                    try:
+                        lbl_estado.configure(text=self._texto_conexion())
+                    except TclError:
+                        pass
+                    if not hay:
+                        self._mostrar_guia_claude(
+                            dlg,
+                            al_conectar=lambda: lbl_estado.configure(
+                                text=self._texto_conexion()))
+
                 def conectar():
                     metodo, _msg = claude_auth.conectar()
-                    if metodo:
-                        lbl_estado.configure(text=self._texto_conexion())
-                        self._actualizar_estado_acta()
-                    else:
-                        self._mostrar_guia_claude(dlg)
+                    if metodo == "api":
+                        marcar_sesion(True)
+                        return
+                    if metodo != "cli":
+                        marcar_sesion(False)
+                        return
+                    # Comprobar la sesión es un subproceso (~0,3 s): fuera del
+                    # hilo de la interfaz, como el resto de esperas de este
+                    # fichero (hilo daemon + cola + after).
+                    resultados = queue.Queue()
+                    threading.Thread(
+                        target=lambda: resultados.put(claude_auth.sesion_iniciada()),
+                        daemon=True).start()
+
+                    def revisar():
+                        if not dlg.winfo_exists():
+                            return
+                        try:
+                            hay = resultados.get_nowait()
+                        except queue.Empty:
+                            dlg.after(200, revisar)
+                            return
+                        marcar_sesion(hay)
+
+                    dlg.after(200, revisar)
 
                 ctk.CTkButton(cont, text="Conectar con Claude", command=conectar,
                               fg_color=TEAL, hover_color=TEAL_HOVER,
@@ -1275,6 +1487,9 @@ class App:
                     self.lbl_estado.configure(text="Error.")
                     messagebox.showerror("recordIt", evento[1])
                     self._actualizar_accion_primaria()
+                elif tipo == "sesion_claude":
+                    self.sesion_claude = evento[1]
+                    self._actualizar_estado_acta()
         except queue.Empty:
             pass
 

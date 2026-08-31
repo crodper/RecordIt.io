@@ -17,7 +17,7 @@ from . import claude_auth, glosario
 
 MAX_TOKENS = 8192
 
-COMANDO_LOGIN = "claude login"
+COMANDO_LOGIN = "claude auth login"
 
 URL_OPENAI = "https://api.openai.com/v1/chat/completions"
 
@@ -30,20 +30,16 @@ TIMEOUT_OPENAI = 300
 # razonamiento, no solo el acta visible.
 MAX_TOKENS_OPENAI = 16384
 
-# Subcadenas del stderr/stdout del CLI que delatan falta de sesión iniciada.
-_PISTAS_LOGIN = ("login", "log in", "authenticat", "not logged in",
-                 "unauthorized", "invalid api key")
-
 
 def _error_legible(exc: subprocess.CalledProcessError) -> RuntimeError:
     """Traduce un fallo del CLI `claude` a un error en español accionable."""
     salida = ((exc.stderr or "") + " " + (exc.output or "")).strip()
     bajo = salida.lower()
-    if any(pista in bajo for pista in _PISTAS_LOGIN):
+    if any(pista in bajo for pista in claude_auth.PISTAS_LOGIN):
         return RuntimeError(
-            "Claude Code está instalado pero sin sesión iniciada. Abre una "
-            f"terminal, ejecuta «{COMANDO_LOGIN}» (con la misma cuenta que tu "
-            "app de Claude) y vuelve a intentarlo.")
+            "Claude Code está instalado pero sin sesión iniciada. Abre «⚙ Ajustes» "
+            "→ «Conectar con Claude» y recordIt se encarga; o ejecuta "
+            f"«{COMANDO_LOGIN}» en una terminal.")
     detalle = salida or f"código de salida {exc.returncode}"
     return RuntimeError(f"Claude Code falló al redactar el acta: {detalle}")
 
