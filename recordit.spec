@@ -4,6 +4,8 @@ import ctypes.util
 import glob
 import importlib.util
 import os
+import re
+import sys
 from PyInstaller.utils.hooks import collect_all
 
 binarios = []
@@ -17,7 +19,10 @@ if os.path.exists(ffmpeg_ruta):
 # que empaquetar libportaudio.so.2 a mano o el AppImage falla en equipos sin
 # libportaudio2 instalado ("OSError: PortAudio library not found"). El runtime
 # hook hooks/rthook_portaudio.py se encarga de que sounddevice la encuentre.
-if os.name != "nt":
+# En macOS no hace falta: el wheel trae libportaudio.dylib en
+# _sounddevice_data/portaudio-binaries y el hook estándar de sounddevice ya la
+# empaqueta ahí, que es donde sounddevice la busca.
+if os.name != "nt" and sys.platform != "darwin":
     _pa = None
     _candidatos = []
     for _dir in ("/usr/lib/x86_64-linux-gnu", "/usr/lib", "/usr/local/lib", "/lib"):
@@ -114,8 +119,41 @@ a = Analysis(
     noarchive=False,
 )
 pyz = PYZ(a.pure)
-# Icono del ejecutable (.ico en Windows; en Linux se ignora). None si no existe.
-_icono = os.path.join("gui", "assets", "appicon.ico")
+# Icono del ejecutable (.ico en Windows, .icns en el .app de macOS; en Linux se
+# ignora). None si no existe.
+_icono = os.path.join("gui", "assets",
+                      "appicon.icns" if sys.platform == "darwin" else "appicon.ico")
 _icono = _icono if os.path.exists(_icono) else None
-exe = EXE(pyz, a.scripts, a.binaries, a.datas, name="recordIt",
-          console=False, disable_windowed_traceback=False, icon=_icono)
+
+if sys.platform == "darwin":
+    # macOS necesita un .app, no un binario suelto: sin Info.plist el sistema
+    # deniega el micrófono EN SILENCIO (la grabación sale muda) y la app no
+    # aparece en el Dock. Y va en modo carpeta (COLLECT) en vez de one-file
+    # porque un one-file extraería ~1 GB de dependencias en cada arranque.
+    _version = re.search(
+        r'__version__ = "([^"]+)"',
+        open(os.path.join("recordit", "__init__.py"), encoding="utf-8").read()).group(1)
+    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="recordIt",
+              console=False, disable_windowed_traceback=False, icon=_icono)
+    coleccion = COLLECT(exe, a.binaries, a.datas, name="recordIt")
+    app = BUNDLE(
+        coleccion,
+        name="recordIt.app",
+        icon=_icono,
+        bundle_identifier="io.recordit.app",
+        version=_version,
+        info_plist={
+            "CFBundleName": "recordIt",
+            "CFBundleDisplayName": "recordIt",
+            "CFBundleShortVersionString": _version,
+            "CFBundleVersion": _version,
+            # El wheel de onnxruntime (VAD de Whisper) pide macOS 14 o superior.
+            "LSMinimumSystemVersion": "14.0",
+            "NSHighResolutionCapable": True,
+            "NSMicrophoneUsageDescription":
+                "recordIt necesita el micrófono para grabar la reunión.",
+        },
+    )
+else:
+    exe = EXE(pyz, a.scripts, a.binaries, a.datas, name="recordIt",
+              console=False, disable_windowed_traceback=False, icon=_icono)

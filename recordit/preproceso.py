@@ -11,6 +11,10 @@ from pathlib import Path
 
 FILTRO_AUDIO = "highpass=f=80,lowpass=f=8000,afftdn=nf=-25,dynaudnorm=f=150:g=15"
 
+# Rutas donde Homebrew deja ffmpeg en macOS (Apple Silicon e Intel). Un .app
+# lanzado desde Finder no hereda el PATH del shell, así que `which` no las ve.
+FFMPEG_MAC = ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg")
+
 
 def ruta_ffmpeg() -> str:
     """Devuelve la ruta a ffmpeg: empaquetado primero, si no el del PATH."""
@@ -23,9 +27,13 @@ def ruta_ffmpeg() -> str:
         if candidato.exists():
             return str(candidato)
     encontrado = shutil.which("ffmpeg")
-    if not encontrado:
-        raise FileNotFoundError("No se encontró ffmpeg (ni empaquetado ni en el PATH).")
-    return encontrado
+    if encontrado:
+        return encontrado
+    if sys.platform == "darwin":
+        for candidato in FFMPEG_MAC:
+            if Path(candidato).is_file():
+                return candidato
+    raise FileNotFoundError("No se encontró ffmpeg (ni empaquetado ni en el PATH).")
 
 
 def construir_orden(entrada, salida, ffmpeg=None) -> list:

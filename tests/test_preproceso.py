@@ -26,3 +26,29 @@ def test_ruta_ffmpeg_falla_si_no_existe(monkeypatch):
         assert False, "debería lanzar FileNotFoundError"
     except FileNotFoundError:
         pass
+
+
+def test_ruta_ffmpeg_busca_las_rutas_de_macos(monkeypatch, tmp_path):
+    # Un .app lanzado desde Finder no hereda el PATH del shell, así que no ve el
+    # ffmpeg de Homebrew: hay que mirar sus rutas a mano.
+    falso = tmp_path / "ffmpeg"
+    falso.write_text("")
+    monkeypatch.setattr(preproceso.sys, "platform", "darwin")
+    monkeypatch.setattr(preproceso, "FFMPEG_MAC", (str(falso),))
+    monkeypatch.setattr(preproceso.shutil, "which", lambda nombre: None)
+    monkeypatch.setattr(preproceso.sys, "frozen", False, raising=False)
+    assert preproceso.ruta_ffmpeg() == str(falso)
+
+
+def test_ruta_ffmpeg_no_usa_las_rutas_de_macos_en_linux(monkeypatch, tmp_path):
+    falso = tmp_path / "ffmpeg"
+    falso.write_text("")
+    monkeypatch.setattr(preproceso.sys, "platform", "linux")
+    monkeypatch.setattr(preproceso, "FFMPEG_MAC", (str(falso),))
+    monkeypatch.setattr(preproceso.shutil, "which", lambda nombre: None)
+    monkeypatch.setattr(preproceso.sys, "frozen", False, raising=False)
+    try:
+        preproceso.ruta_ffmpeg()
+        assert False, "debería lanzar FileNotFoundError"
+    except FileNotFoundError:
+        pass
