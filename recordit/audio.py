@@ -9,6 +9,7 @@ import datetime as dt
 import math
 import os
 import queue
+import sys
 import wave
 
 import numpy as np
@@ -266,6 +267,18 @@ def salida_sistema_por_defecto():
         return None
     indice, _etq, _nom, loopback = salidas[0]
     return indice, loopback
+
+
+def aviso_sin_audio_sistema() -> str:
+    """Por qué no hay captura del audio del sistema, para mostrarlo en la GUI.
+
+    En Linux y Windows es cosa del servidor de audio y no hay nada que el
+    usuario pueda instalar; en macOS sí, así que se le dice cuál.
+    """
+    if sys.platform == "darwin":
+        return ("sin audio del sistema: instala BlackHole y envíale la salida; "
+                "de momento, solo micrófono")
+    return "sin audio del sistema: solo micrófono"
 
 
 def frecuencia_soportada(dispositivo, frecuencia, canales) -> int:

@@ -262,6 +262,20 @@ def test_salidas_macos_sin_blackhole_es_vacio():
     assert audio.seleccionar_salidas(dispositivos, HOSTAPIS_MAC) == []
 
 
+def test_aviso_sin_audio_sistema_en_macos_menciona_blackhole(monkeypatch):
+    # En macOS el hueco se arregla instalando un dispositivo virtual, así que el
+    # aviso tiene que decir cuál.
+    monkeypatch.setattr(audio.sys, "platform", "darwin")
+    assert "BlackHole" in audio.aviso_sin_audio_sistema()
+
+
+def test_aviso_sin_audio_sistema_en_linux_no_menciona_blackhole(monkeypatch):
+    monkeypatch.setattr(audio.sys, "platform", "linux")
+    aviso = audio.aviso_sin_audio_sistema()
+    assert "BlackHole" not in aviso
+    assert "solo micrófono" in aviso
+
+
 # --- listar salidas y salida por defecto -----------------------------------
 
 

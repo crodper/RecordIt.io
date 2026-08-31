@@ -708,7 +708,7 @@ class App:
         if self.var_reunion_online.get():
             deteccion = audio.salida_sistema_por_defecto()
             if deteccion is None:
-                aviso_online = " · sin audio del sistema: solo micrófono"
+                aviso_online = " · " + audio.aviso_sin_audio_sistema()
             else:
                 fuente_salida, salida_loopback = deteccion
         base = rutas.base_desde_audio(salida)
