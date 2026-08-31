@@ -12,8 +12,11 @@ Flujo: `grabar_reunion.py → grabaciones/reunion_*.wav → transcribir.py → t
 
 Para **reuniones online** hay un modo (interruptor en la GUI, flag `--reunion-online`
 en la CLI) que además del micrófono captura el **audio de salida del sistema**
-(fuentes `*.monitor` en Linux, WASAPI loopback en Windows) y lo mezcla en el mismo
-mono. La salida se auto-detecta; si no la hay, graba solo micro.
+(fuentes `*.monitor` en Linux, WASAPI loopback en Windows, dispositivo virtual
+**BlackHole** en macOS) y lo mezcla en el mismo mono. La salida se auto-detecta; si no
+la hay, graba solo micro. En macOS BlackHole lo instala el usuario
+(`brew install --cask blackhole-2ch`) y hay que enviarle la salida con un Multi-Output
+Device: ver `docs/BUILD-MACOS.md`.
 
 ## Estructura
 
@@ -80,6 +83,10 @@ necesita. La plantilla requiere `npm install` una vez dentro de `pdf-template/`.
   con `build.sh` (local) / `build-linux.sh` (portable vía Docker/AppImage). El `.exe` de
   **Windows** se construye **en Windows real** (no desde Linux: Wine no implementa
   `ucrtbase.crealf` que usa `ctranslate2`); guía en `docs/BUILD-WINDOWS.md` (`build.ps1`).
+  El `.app` de **macOS** (Apple Silicon) se construye **en un Mac real** con
+  `build-macos.sh`: el spec produce un bundle en modo carpeta con `Info.plist`
+  (`NSMicrophoneUsageDescription` es obligatorio o el micro sale mudo); guía en
+  `docs/BUILD-MACOS.md`.
   Se usa **CustomTkinter** (Tkinter por debajo) por aspecto moderno
   (esquinas redondeadas, modo claro/oscuro, acento de color); el `recordit.spec` debe
   empaquetar sus temas con `collect_all("customtkinter")`. La lógica vive en `recordit/`

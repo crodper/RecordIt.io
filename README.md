@@ -56,6 +56,9 @@ PDF del acta se genera en Python puro (reportlab), así que funciona dentro del 
 - **Windows:** se construye en una máquina Windows real (no desde Linux: Wine no puede con
   `ctranslate2`). Guía completa en **`docs/BUILD-WINDOWS.md`**; en resumen, `vendor\ffmpeg.exe`
   + `.\build.ps1` → `dist\recordIt.exe`.
+- **macOS (Apple Silicon):** se construye en un Mac real (PyInstaller no cruza de SO y la
+  firma ad-hoc de arm64 la pone el propio build). Guía en **`docs/BUILD-MACOS.md`**; en
+  resumen, `vendor/ffmpeg` estático arm64 + `./build-macos.sh` → `dist/recordIt.app`.
 
 > **Linux portable:** construye con `./build-linux.sh`, que usa Docker (`Dockerfile.linux`)
 > para compilar sobre una glibc antigua (Debian bullseye, glibc 2.31). Construir en un
@@ -75,7 +78,7 @@ Instalación de ffmpeg y PortAudio según el sistema:
 | Sistema | ffmpeg | PortAudio |
 |---|---|---|
 | **Linux (Debian/Ubuntu)** | `sudo apt install ffmpeg` | `sudo apt install libportaudio2` |
-| **macOS (Homebrew)** | `brew install ffmpeg` | `brew install portaudio` |
+| **macOS (Homebrew)** | `brew install ffmpeg` | incluido con la rueda de `sounddevice` (pip) |
 | **Windows** | `winget install ffmpeg` (o [ffmpeg.org](https://ffmpeg.org/download.html)) | incluido con la rueda de `sounddevice` (pip) |
 
 Además, para generar el acta automáticamente con `acta.sh` hace falta el **CLI de `claude`**

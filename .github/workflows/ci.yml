@@ -1,7 +1,8 @@
 name: CI/CD
 
 # - test:    corre la suite en cada push a master y en cada PR.
-# - build:   en cada tag (v*), construye el AppImage (Linux) y el .exe (Windows).
+# - build:   en cada tag (v*), construye el AppImage (Linux), el .exe (Windows)
+#            y el .app (macOS arm64).
 # - release: en cada tag, crea la Release de GitHub enlazando ambos binarios,
 #            con notas de cambios de esa versión autogeneradas desde los commits.
 #
@@ -114,9 +115,51 @@ jobs:
           if-no-files-found: error
 
   # --------------------------------------------------------------------------
+  # .app en un runner macOS. Solo Apple Silicon: el wheel de onnxruntime (la VAD
+  # de Whisper) ya no se publica para macOS x86_64.
+  # continue-on-error mientras el build no se haya visto pasar en un Mac real:
+  # así un fallo aquí no impide publicar el AppImage y el .exe. Quitarlo cuando
+  # haya una ejecución verde.
+  build-app:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: macos-14
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Instalar dependencias Python
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Comprobar dependencias
+        run: python -c "import tkinter, customtkinter, PIL, sounddevice, ctranslate2; print('deps OK')"
+      - name: ffmpeg estático arm64
+        run: |
+          mkdir -p vendor
+          curl -fsSL -o /tmp/ffmpeg.zip https://www.osxexperts.net/ffmpeg711arm.zip
+          unzip -o -j /tmp/ffmpeg.zip ffmpeg -d vendor
+          chmod +x vendor/ffmpeg
+          file vendor/ffmpeg | grep -q arm64   # el de Homebrew no serviría: enlaza dinámico
+      - name: Construir (PyInstaller)
+        run: python -m PyInstaller --noconfirm --clean recordit.spec
+      - name: Comprimir el .app
+        # ditto y no zip: conserva los enlaces internos del bundle y la firma
+        # ad-hoc que pone PyInstaller (obligatoria en arm64 para que arranque).
+        run: ditto -c -k --keepParent dist/recordIt.app dist/recordIt-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app
+          path: dist/recordIt-macos-arm64.zip
+          if-no-files-found: error
+
+  # --------------------------------------------------------------------------
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-appimage, build-exe]
+    needs: [build-appimage, build-exe, build-app]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -134,6 +177,22 @@ jobs:
           **Descargas:**
           - `recordIt-x86_64.AppImage` — Linux x86-64 (portable): `chmod +x` y ejecutar.
           - `recordIt.exe` — Windows x86-64.
+          EOF
+          # El .app puede faltar: su job es continue-on-error. Si no está, la
+          # Release sale sin él y sin prometerlo en las notas.
+          adjuntos=("artifacts/appimage/recordIt-x86_64.AppImage"
+                    "artifacts/exe/recordIt.exe")
+          mac="artifacts/app/recordIt-macos-arm64.zip"
+          if [ -f "$mac" ]; then
+            cat >> notes.md <<'EOF'
+          - `recordIt-macos-arm64.zip` — macOS 14+ (Apple Silicon): descomprime y, la
+            primera vez, clic derecho sobre la app → Abrir (no está notarizada).
+          EOF
+            adjuntos+=("$mac")
+          else
+            echo "::warning::sin artefacto de macOS; la Release sale sin el .app"
+          fi
+          cat >> notes.md <<'EOF'
 
           La 1ª transcripción descarga el modelo Whisper large-v3 (~3 GB).
           EOF
@@ -142,5 +201,4 @@ jobs:
             --title "recordIt ${{ github.ref_name }}" \
             --notes-file notes.md \
             --generate-notes \
-            "artifacts/appimage/recordIt-x86_64.AppImage" \
-            "artifacts/exe/recordIt.exe"
+            "${adjuntos[@]}"
