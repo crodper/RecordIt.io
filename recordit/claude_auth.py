@@ -188,6 +188,7 @@ def ruta_cli():
     else:
         candidatos = [
             os.path.join(home, ".local", "bin", "claude"),
+            "/opt/homebrew/bin/claude",   # Homebrew en Apple Silicon
             "/usr/local/bin/claude",
             "/usr/bin/claude",
         ]

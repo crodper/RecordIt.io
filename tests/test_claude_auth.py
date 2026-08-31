@@ -162,6 +162,16 @@ def test_instalar_sin_interprete_no_propaga(monkeypatch):
     assert "no existe powershell" in salida
 
 
+def test_ruta_cli_encuentra_el_claude_de_homebrew_en_apple_silicon(monkeypatch):
+    # Una app de macOS lanzada desde Finder no hereda el PATH del shell, así que
+    # /opt/homebrew/bin no aparece en which(): hay que mirarlo a mano.
+    monkeypatch.setattr(claude_auth.os, "name", "posix")
+    monkeypatch.setattr(claude_auth.shutil, "which", lambda n: None)
+    monkeypatch.setattr(claude_auth.os.path, "isfile",
+                        lambda ruta: ruta == "/opt/homebrew/bin/claude")
+    assert claude_auth.ruta_cli() == "/opt/homebrew/bin/claude"
+
+
 def test_abrir_login_sin_cli_devuelve_false(monkeypatch):
     monkeypatch.setattr(claude_auth, "ruta_cli", lambda: None)
     assert claude_auth.abrir_login() is False
