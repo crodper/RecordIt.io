@@ -1,6 +1,6 @@
 """Lógica núcleo de recordIt, reutilizada por la CLI y la GUI."""
 
-__version__ = "1.0.2"
+__version__ = "1.1.0"
 
 # Origen del build: determina dónde busca actualizaciones la app.
 ORIGEN = "github"
