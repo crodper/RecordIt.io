@@ -133,6 +133,20 @@ DISPOSITIVOS_PIPEWIRE = [
 ]
 
 
+# Host API y dispositivos tal como los expone PortAudio en macOS con BlackHole
+# instalado. BlackHole es un dispositivo virtual con entrada Y salida: el usuario
+# manda el audio del sistema a su salida (normalmente vía un Multi-Output Device)
+# y recordIt lo captura abriendo su ENTRADA.
+HOSTAPIS_MAC = [{"name": "Core Audio"}]
+
+DISPOSITIVOS_MAC_BLACKHOLE = [
+    _dev("MacBook Pro Microphone", 1, 0, 0),
+    _dev("MacBook Pro Speakers", 0, 2, 0),
+    _dev("BlackHole 2ch", 2, 2, 0),
+    _dev("Multi-Output Device", 0, 2, 0),
+]
+
+
 def test_microfonos_colapsa_duplicados_en_pipewire():
     # En un sistema con PulseAudio/PipeWire, los 26 dispositivos crudos se
     # reducen a los micros reales: predeterminado del sistema + integrado + BT.
@@ -164,6 +178,16 @@ def test_microfonos_etiquetas_amigables():
         "alsa_input.pci-0000_00_1f.3-platform-sof_sdw.HiFi__Mic__source"].lower()
     # El predeterminado del sistema se marca como tal.
     assert "predeterminado" in etiqueta["Default Source"].lower()
+
+
+def test_microfonos_macos_no_ofrece_blackhole_como_microfono():
+    # BlackHole tiene canales de entrada, pero es la captura del audio del
+    # sistema: no debe aparecer como micrófono elegible.
+    micros = audio.seleccionar_microfonos(
+        DISPOSITIVOS_MAC_BLACKHOLE, HOSTAPIS_MAC, predeterminado=0)
+    nombres = [nom for _, _, nom in micros]
+    assert "BlackHole 2ch" not in nombres
+    assert nombres == ["MacBook Pro Microphone"]
 
 
 def test_microfonos_alsa_puro_no_se_filtra_de_mas():
@@ -221,6 +245,21 @@ def test_salidas_alsa_puro_sin_monitores_es_vacio():
     dispositivos = [_dev("sof-soundwire: - (hw:0,1)", 2, 0, 0),
                     _dev("default", 128, 128, 0)]
     assert audio.seleccionar_salidas(dispositivos, hostapis) == []
+
+
+def test_salidas_macos_captura_por_blackhole():
+    salidas = audio.seleccionar_salidas(
+        DISPOSITIVOS_MAC_BLACKHOLE, HOSTAPIS_MAC,
+        nombre_sink_defecto="Multi-Output Device")
+    assert [nom for _, _, nom, _ in salidas] == ["BlackHole 2ch"]
+    assert salidas[0][0] == 2          # índice de PortAudio de BlackHole
+    assert salidas[0][3] is False      # se abre como entrada, no loopback
+
+
+def test_salidas_macos_sin_blackhole_es_vacio():
+    dispositivos = [_dev("MacBook Pro Microphone", 1, 0, 0),
+                    _dev("MacBook Pro Speakers", 0, 2, 0)]
+    assert audio.seleccionar_salidas(dispositivos, HOSTAPIS_MAC) == []
 
 
 # --- listar salidas y salida por defecto -----------------------------------

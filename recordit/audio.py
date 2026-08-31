@@ -21,6 +21,12 @@ OBJETIVO_DBFS = -20.0    # nivel medio al que apunta la ganancia automática
 GANANCIA_MAX_DB = 30.0   # tope de amplificación del AGC
 PUERTA_RUIDO_DBFS = -55.0  # por debajo de esto se considera silencio
 
+# macOS no tiene loopback nativo: el audio del sistema se captura con un
+# dispositivo virtual que instala el usuario (BlackHole). Core Audio lo expone
+# con entrada Y salida a la vez; recordIt abre su ENTRADA, igual que un
+# `*.monitor` de PulseAudio.
+NOMBRE_VIRTUAL_MAC = "blackhole"
+
 
 def nombre_archivo() -> str:
     """Nombre de fichero (sin carpeta) con fecha y hora actuales."""
@@ -121,7 +127,13 @@ def seleccionar_microfonos(dispositivos, hostapis, predeterminado):
     hay_pulse = "PulseAudio" in nombre_api.values()
 
     def es_micro(info):
-        return info["max_input_channels"] > 0 and "monitor" not in info["name"].lower()
+        # Fuera las capturas del audio del sistema: los `*.monitor` de
+        # PulseAudio y el dispositivo virtual de macOS (tiene entrada, pero no
+        # es un micrófono).
+        nombre = info["name"].lower()
+        return (info["max_input_channels"] > 0
+                and "monitor" not in nombre
+                and NOMBRE_VIRTUAL_MAC not in nombre)
 
     micros = []
     for indice, info in enumerate(dispositivos):
@@ -159,12 +171,15 @@ def seleccionar_salidas(dispositivos, hostapis, nombre_sink_defecto=None):
       (PulseAudio/PipeWire en Linux).
 
     En Windows se usan los dispositivos de salida del API WASAPI. En Linux se
-    usan las fuentes `*.monitor` de PulseAudio. En ALSA puro (sin PulseAudio ni
-    WASAPI) no hay loopback fiable y se devuelve lista vacía.
+    usan las fuentes `*.monitor` de PulseAudio. En macOS se usa la entrada del
+    dispositivo virtual BlackHole. En ALSA puro (sin PulseAudio ni WASAPI), o en
+    macOS sin BlackHole instalado, no hay loopback fiable y se devuelve lista
+    vacía.
     """
     nombre_api = {i: h["name"] for i, h in enumerate(hostapis)}
     api_wasapi = next((i for i, n in nombre_api.items() if "WASAPI" in n), None)
     hay_pulse = "PulseAudio" in nombre_api.values()
+    hay_coreaudio = "Core Audio" in nombre_api.values()
 
     salidas = []
     if api_wasapi is not None:
@@ -184,6 +199,18 @@ def seleccionar_salidas(dispositivos, hostapis, nombre_sink_defecto=None):
                 salidas.append((indice, f"{nombre}  ·  audio del sistema",
                                 nombre, False))
         clave_defecto = f"{nombre_sink_defecto}.monitor" if nombre_sink_defecto else None
+    elif hay_coreaudio:
+        api_core = next(i for i, n in nombre_api.items() if n == "Core Audio")
+        for indice, info in enumerate(dispositivos):
+            nombre = info["name"].strip()
+            if (info["hostapi"] == api_core
+                    and info["max_input_channels"] > 0
+                    and NOMBRE_VIRTUAL_MAC in nombre.lower()):
+                salidas.append((indice, f"{nombre}  ·  audio del sistema",
+                                nombre, False))
+        # La salida por defecto del sistema es el Multi-Output Device, no
+        # BlackHole, así que no hay nada que priorizar.
+        clave_defecto = None
     else:
         return []
 
